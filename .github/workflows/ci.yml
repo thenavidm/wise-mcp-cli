@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
+  smoke:
+    # The build passing says nothing about whether the server actually starts
+    # and lists its tools, which is the failure a user would actually hit.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Server starts and lists every tool
+        env:
+          WISE_API_TOKEN: ci-placeholder
+        run: |
+          printf '%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | node dist/index.js 2>/dev/null \
+            | node -e '
+              let raw = "";
+              process.stdin.on("data", c => raw += c);
+              process.stdin.on("end", async () => {
+                const listed = raw.trim().split("\n").map(l => JSON.parse(l)).find(m => m.id === 2);
+                const tools = listed?.result?.tools ?? [];
+                console.log(`tools: ${tools.length}`);
+                // Compared against the source, not a number typed here: a
+                // literal turns every tool added into a red build.
+                const { ALL_TOOLS } = await import("./dist/tools/index.js");
+                const expected = ALL_TOOLS.length;
+                if (tools.length !== expected) {
+                  console.error(`handshake exposed ${tools.length} tools, ALL_TOOLS has ${expected}`);
+                  process.exit(1);
+                }
+                const unannotated = tools.filter(t => t.annotations?.readOnlyHint === undefined);
+                if (unannotated.length) {
+                  console.error("unannotated: " + unannotated.map(t => t.name).join(", "));
+                  process.exit(1);
+                }
+              });
+            '
+
+      - name: Read-only mode hides every write
+        env:
+          WISE_API_TOKEN: ci-placeholder
+          WISE_READ_ONLY: "1"
+        run: |
+          printf '%s\n%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            | node dist/index.js 2>/dev/null \
+            | node -e '
+              let raw = "";
+              process.stdin.on("data", c => raw += c);
+              process.stdin.on("end", () => {
+                const listed = raw.trim().split("\n").map(l => JSON.parse(l)).find(m => m.id === 2);
+                const writes = listed.result.tools.filter(t => !t.annotations.readOnlyHint);
+                if (writes.length) {
+                  console.error("writes exposed in read-only mode: " + writes.map(t => t.name).join(", "));
+                  process.exit(1);
+                }
+                console.log(`read-only tools: ${listed.result.tools.length}`);
+              });
+            '
+
+      - name: With no token, a read exits 10 and a payment is refused
+        env:
+          WISE_KEYCHAIN_SERVICE: ci-none
+        run: |
+          set +e
+          node dist/index.js list-balances; code=$?
+          [ "$code" = "10" ] || { echo "expected 10, got $code"; exit 1; }
+          WISE_API_TOKEN=ci-placeholder node dist/index.js create-transfer --recipient-id 1 --source-currency EUR --amount 5; code=$?
+          [ "$code" = "2" ] || { echo "expected 2, got $code"; exit 1; }
+          echo ok
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t wise-mcp-cli:ci .

@@ -1,0 +1,76 @@
+{
+  "manifest_version": "0.2",
+  "name": "wise",
+  "display_name": "Wise",
+  "version": "1.0.0",
+  "description": "Wise MCP server for Claude and AI agents. 11 tools for balances, recipients, quotes and transfers on a Wise business account, with every payment set up unpaid for you to pay in Wise.",
+  "long_description": "Connects Claude to a Wise business account with a personal API token from wise.com/settings/api-tokens.\n\nIt sets payments up and never pays them: a transfer made here waits in Wise until you pay it in the Wise app or website. There is no tool that moves money.\n\nSaving a recipient, setting up a payment and cancelling one each wait for your approval.",
+  "author": {
+    "name": "Navid Moazzez",
+    "url": "https://navid.me"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thenavidm/wise-mcp-cli"
+  },
+  "homepage": "https://github.com/thenavidm/wise-mcp-cli",
+  "documentation": "https://github.com/thenavidm/wise-mcp-cli#readme",
+  "support": "https://github.com/thenavidm/wise-mcp-cli/issues",
+  "license": "MIT",
+  "keywords": [
+    "wise",
+    "transferwise",
+    "payments",
+    "invoices",
+    "mcp"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "WISE_API_TOKEN": "${user_config.api_token}",
+        "WISE_ENV": "${user_config.environment}",
+        "WISE_READ_ONLY": "${user_config.read_only}"
+      }
+    }
+  },
+  "user_config": {
+    "api_token": {
+      "type": "string",
+      "title": "Wise API token",
+      "description": "A personal API token from wise.com/settings/api-tokens (Your account > Connect and manage apps > API tokens).",
+      "sensitive": true,
+      "required": true
+    },
+    "environment": {
+      "type": "string",
+      "title": "Environment",
+      "description": "live, or sandbox for a token from Wise's sandbox.",
+      "default": "live",
+      "required": false
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read only",
+      "description": "Hide every tool that can save a recipient, price, set up or cancel a payment.",
+      "default": false,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=22"
+    }
+  }
+}
