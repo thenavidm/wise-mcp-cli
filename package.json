@@ -1,7 +1,7 @@
 {
   "name": "@thenavidm/wise-mcp-cli",
-  "version": "1.1.0",
-  "description": "Wise MCP server and CLI for Claude Code and AI agents. 15 tools for balances, recipients, quotes and transfers on a Wise business account, with every payment set up unpaid for a person to pay in Wise.",
+  "version": "1.2.0",
+  "description": "Wise MCP server and CLI for Claude Code and AI agents. 36 tools: balances, statements, rates, recipients, quotes, transfers, batches and receipts on a Wise business account, with every payment set up unpaid for a person to pay in Wise.",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {

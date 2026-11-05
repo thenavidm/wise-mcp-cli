@@ -8,7 +8,7 @@
 [![X](https://img.shields.io/badge/X-@thenavidm-black?logo=x)](https://x.com/thenavidm)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-thenavidm-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/in/thenavidm)
 
-Wise MCP server and CLI for Claude Code, Codex and AI agents. 15 tools for balances, recipients, quotes and transfers on a Wise business account, plus the checks a payment run needs: find any saved recipient, and compare an invoice's bank details with the saved ones.
+Wise MCP server and CLI for Claude Code, Codex and AI agents. 36 tools covering every part of the Wise API a personal token may use: balances, statements, activity, exchange rates, price comparisons, recipients, quotes, transfers, batch payments and receipts. Plus the checks a payment run needs: find any saved recipient, compare an invoice's bank details with the saved ones, and know before setting a payment up which reason, invoice number or BRL transfer nature the route requires.
 
 It sets payments up and never pays them. A transfer made here waits in Wise,
 unpaid, until a person pays it in the Wise app or website. There is no tool
@@ -74,22 +74,30 @@ is the tool name with dashes.
 
 | Capability | CLI command | MCP tool |
 |---|---|---|
-| Profiles this token can act for | `wise-cli list-profiles` | `list_profiles` |
-| Balances | `wise-cli list-balances` | `list_balances` |
+| Who the token belongs to, profiles, addresses | `wise-cli get-me` / `list-profiles` / `get-profile` / `list-addresses` | `get_me` / `list_profiles` / `get_profile` / `list_addresses` |
+| Account activity, as the app shows it | `wise-cli list-activities` | `list_activities` |
+| Balances, totals, deposit limits | `wise-cli list-balances` / `get-balance` / `get-total-funds` / `get-deposit-limit` | `list_balances` / `get_balance` / `get_total_funds` / `get_deposit_limit` |
+| Balance statements | `wise-cli get-statement` | `get_statement` |
+| Open or close a currency balance or Jar | `wise-cli open-balance` / `close-balance` | `open_balance` / `close_balance` |
+| Local bank details for a currency | `wise-cli list-account-details-orders` / `order-account-details` | `list_account_details_orders` / `order_account_details` |
+| Exchange rates, now or historical | `wise-cli get-rate` | `get_rate` |
+| Compare with banks and other providers | `wise-cli compare-prices` | `compare_prices` |
+| Currencies Wise supports | `wise-cli list-currencies` | `list_currencies` |
 | Saved recipients | `wise-cli list-recipients` / `get-recipient` | `list_recipients` / `get_recipient` |
 | Find any recipient, every page | `wise-cli find-recipient` | `find_recipient` |
 | Check an invoice's bank details | `wise-cli check-bank-details` | `check_bank_details` |
-| Transfers | `wise-cli list-transfers` / `get-transfer` | `list_transfers` / `get_transfer` |
-| Price a payment | `wise-cli create-quote` | `create_quote` |
 | Fields a new recipient needs | `wise-cli get-recipient-requirements` | `get_recipient_requirements` |
-| Save a recipient | `wise-cli create-recipient` | `create_recipient` |
-| Change or remove a recipient | `wise-cli update-recipient` / `delete-recipient` | `update_recipient` / `delete_recipient` |
+| Save, change or remove a recipient | `wise-cli create-recipient` / `update-recipient` / `delete-recipient` | `create_recipient` / `update_recipient` / `delete_recipient` |
+| Price a payment | `wise-cli create-quote` | `create_quote` |
+| What a payment needs: reason, invoice number, BRL nature | `wise-cli get-transfer-requirements` | `get_transfer_requirements` |
 | Set up a payment, unpaid | `wise-cli create-transfer` | `create_transfer` |
+| Transfers, how each was paid, receipts | `wise-cli list-transfers` / `get-transfer` / `list-transfer-payments` / `get-receipt` | `list_transfers` / `get_transfer` / `list_transfer_payments` / `get_receipt` |
 | Cancel an unpaid payment | `wise-cli cancel-transfer` | `cancel_transfer` |
+| Batch payments | `wise-cli create-batch` / `get-batch` / `update-batch` | `create_batch` / `get_batch` / `update_batch` |
 | Check your setup | `wise-cli doctor` | not a tool |
-| Pay a transfer | not a command | not a tool, on purpose |
+| Pay a transfer or batch, move money between balances | not a command | not a tool, on purpose |
 
-All 15 with their arguments are in [section 6](#6-tools).
+All 36 with their arguments are in [section 6](#6-tools).
 
 ## Contents
 
@@ -100,7 +108,7 @@ All 15 with their arguments are in [section 6](#6-tools).
 | 3 | [Install](#3-install) | Every client, copy and paste, plus the shell |
 | 4 | [Output and exit codes](#4-output-and-exit-codes) | What scripts branch on |
 | 5 | [Which surface, and what each costs](#5-which-surface-and-what-each-costs) | Context cost, and how to spend less |
-| 6 | [Tools](#6-tools) | All 15, with arguments |
+| 6 | [Tools](#6-tools) | All 36, with arguments |
 | 7 | [Paying safely](#7-paying-safely) | Why nothing here can pay |
 | 8 | [Payment requests by email](#8-payment-requests-by-email) | The workflow this was built for |
 | 9 | [Several profiles](#9-several-profiles) | Personal and business, or two businesses |
@@ -108,7 +116,7 @@ All 15 with their arguments are in [section 6](#6-tools).
 | 11 | [Your data](#11-your-data) | What is stored and where |
 | 12 | [Risks](#12-risks) | Read this before you install |
 | 13 | [Troubleshooting](#13-troubleshooting) | When something breaks |
-| 14 | [FAQ](#14-faq-) | Including what an MCP server is |
+| 14 | [FAQ](#14-faq) | Including what an MCP server is |
 
 ## 1. What you can ask it
 
@@ -262,7 +270,7 @@ transfer and never creates a second one.
 
 ## 5. Which surface, and what each costs
 
-Both surfaces are the same program with the same 15 tools. The difference is
+Both surfaces are the same program with the same 36 tools. The difference is
 when the model pays for them.
 
 | Cost | MCP server | CLI |
@@ -273,16 +281,16 @@ when the model pays for them.
 
 These are measured in Claude Code, never estimated from characters, and will
 be filled in with the date and Claude Code version before the first release is
-announced. The schemas of all 15 tools total about 8 KB, the largest
-`create_transfer` at 2 KB.
+announced. The schemas of all 36 tools total about 19 KB, the largest
+`create_transfer` at 3 KB.
 
 Claude Code's [tool search](https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search)
 is on by default: it sends only the tool names and the server instructions,
 and loads a tool's full definition when the model reaches for it.
 
 To spend less, turn the server off when you are not using it, which in Claude
-Code is the `/mcp` panel. `WISE_READ_ONLY=1` takes the 6 write tools off the
-list, leaving 9. Or install the CLI and add the server on the days it earns
+Code is the `/mcp` panel. `WISE_READ_ONLY=1` takes the 11 write tools off the
+list, leaving 25. Or install the CLI and add the server on the days it earns
 its place.
 
 ## 6. Tools
@@ -291,42 +299,50 @@ Every tool that acts for a profile takes an optional `profile`, a profile id.
 Without it the server uses `WISE_PROFILE_ID`, else the only business profile;
 see [section 9](#9-several-profiles).
 
-### Reading
+### Account
 
 | Tool | Arguments | What it returns |
 |---|---|---|
+| `get_me` | none | The Wise user the token belongs to: name, email, active |
 | `list_profiles` | none | Every profile this token can act for: id, type, name |
-| `list_balances` | `profile`, `include_jars` | Each currency balance: available and reserved |
-| `list_recipients` | `profile`, `currency` (comma-separated), `size` (1-20), `cursor` | Saved recipients, newest first: id, name, currency, type, masked account |
-| `find_recipient` | `name`, `currency`, `account_ending`, `profile` | Every saved recipient that matches, read across all pages: name words in any order, accents and case ignored. Best match first |
-| `check_bank_details` | `recipient_id`, `name`, `details` | Field by field, which of an invoice's name and bank details match the saved recipient and which differ, account numbers masked to their last four |
-| `get_recipient` | `id` | One recipient with its full details as Wise holds them |
-| `list_transfers` | `profile`, `status`, `since`, `until` (YYYY-MM-DD), `limit` (1-100), `offset`, `oldest_first` | Transfers, newest first, from the last 90 days unless `since` says otherwise: status, amounts, rate, reference |
-| `get_transfer` | `id` | One transfer |
-| `get_recipient_requirements` | `currency`, `source_currency`, or `quote_id`, `profile` | The bank fields Wise needs for a new recipient paid in that currency, by account type. With a currency it makes a throwaway quote to ask, which sends nothing |
+| `get_profile` | `profile` | One profile's name, address, contact details and state |
+| `list_addresses` | none | The addresses saved on the account's profiles |
+| `list_activities` | `type`, `status`, `since`, `until` (ISO 8601), `size` (1-100), `cursor`, `profile` | The activity feed as the Wise app shows it, newest first: transfers, card spending, conversions, money in |
 
-### Pricing
+### Balances
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `create_quote` | `source_currency`, `target_currency`, `amount`, `amount_is` (`target` or `source`), `pay_in` (`BANK_TRANSFER` or `BALANCE`), `recipient_id`, `profile` | The rate, the fee and both amounts. Nothing is sent or reserved, and a quote expires on its own |
+| `list_balances` | `include_jars`, `profile` | Each currency balance: available and reserved |
+| `get_balance` | `id`, `profile` | One balance: available, reserved, cash, total worth |
+| `get_total_funds` | `currency`, `profile` | Every balance added up in one currency, with any overdraft |
+| `get_deposit_limit` | `currency`, `profile` | Whether a balance has a deposit limit where the profile is based |
+| `get_statement` | `balance_id`, `currency`, `from`, `to`, `flat`, `profile` | A balance's statement for a period. Wise allows it with a personal token only for business accounts in the US, Canada, Australia, New Zealand, Singapore and Malaysia |
+| `open_balance` | `currency`, `jar_name`, `profile` | Opens a currency balance, or a named Jar. Moves no money |
+| `close_balance` | `id`, `profile` | Closes a balance or Jar. Wise refuses while it holds money. **Approved by a person** |
+| `list_account_details_orders` | `currency`, `profile` | The local bank details ordered for each currency, and their state |
+| `order_account_details` | `currency`, `profile` | Orders local bank details for a currency, such as a USD account and routing number. **Approved by a person** |
 
-`amount_is` defaults to `target`: the recipient receives exactly the amount, as
-on an invoice. `source` means the amount is what leaves your account.
+### Rates and currencies
 
-### Writing, each approved by a person
+| Tool | Arguments | What it returns |
+|---|---|---|
+| `get_rate` | `source`, `target`, `at`, `from`, `to`, `group` (`day`, `hour`, `minute`) | Wise's mid-market rate now, at a past moment, or as a history |
+| `compare_prices` | `source_currency`, `target_currency`, `amount`, `source_country`, `target_country` | What sending it costs with Wise and with banks and other providers: fee, rate, what arrives, how fast. Most arriving first |
+| `list_currencies` | none | Every currency Wise sends to, with symbol and name |
+
+### Recipients
 
 | Tool | Arguments | What it does |
 |---|---|---|
-| `create_recipient` | `currency`, `type`, `account_holder_name`, `details`, `legal_type`, `owned_by_you`, `profile` | Saves new bank details as a recipient. `details` holds the fields from `get_recipient_requirements`, such as `{"iban":"DE89..."}` |
-| `update_recipient` | `id`, `account_holder_name`, `type`, `details` | Changes a recipient's name or bank details. Pass only what changes; the rest is kept |
-| `delete_recipient` | `id` | Deactivates a recipient, so no new payment can be set up to it |
-| `create_transfer` | `recipient_id`, `source_currency`, `amount`, `target_currency`, `amount_is`, `pay_in`, `reference`, `payment_id`, `profile` | Prices the payment against the recipient and sets it up, unpaid. `target_currency` defaults to the recipient's |
-| `cancel_transfer` | `id` | Cancels a payment that has not been paid yet |
-
-`payment_id` is any stable id for the request: an email's message id, an
-invoice number. The same id always becomes the same Wise transaction id, so
-asking twice, or a retry after a timeout, never sets the payment up twice.
+| `list_recipients` | `currency` (comma-separated), `size` (1-20), `cursor`, `profile` | Saved recipients, newest first: id, name, currency, type, masked account |
+| `find_recipient` | `name`, `currency`, `account_ending`, `profile` | Every saved recipient that matches, across all pages: name words in any order, accents and case ignored. Best match first |
+| `check_bank_details` | `recipient_id`, `name`, `details` | Which of an invoice's name and bank details match the saved recipient and which differ, field by field, account numbers masked |
+| `get_recipient` | `id` | One recipient with its full details |
+| `get_recipient_requirements` | `currency`, `source_currency`, or `quote_id`, `profile` | The bank and address fields Wise needs for a recipient paid in that currency, by account type. Pass `source_currency` too: paying from USD or AUD asks for an address |
+| `create_recipient` | `currency`, `type`, `account_holder_name`, `details`, `legal_type`, `owned_by_you`, `profile` | Saves a recipient. `details` holds the fields from `get_recipient_requirements`, the address under `address`. **Approved by a person** |
+| `update_recipient` | `id`, `account_holder_name`, `type`, `details` | Changes a recipient's name, bank details or address. Pass only what changes. **Approved by a person** |
+| `delete_recipient` | `id` | Deactivates a recipient. **Approved by a person** |
 
 **Changing a recipient.** Wise has no edit for recipients, in its API or its
 app. `update_recipient` saves a new recipient with your changes merged into the
@@ -334,8 +350,59 @@ current details, and only once Wise has accepted it deactivates the old one, so
 a refused change never leaves you without the recipient. Payments already set
 up to the old one still go to the old details: cancel and set them up again.
 
-`reference` is what the recipient sees on their statement. Wise allows fewer
-characters on some routes and says so when it is too long.
+### Payments
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `create_quote` | `source_currency`, `target_currency`, `amount`, `amount_is`, `pay_in`, `recipient_id`, `profile` | The rate, the fee and both amounts. Nothing is sent or reserved |
+| `get_transfer_requirements` | `recipient_id`, `source_currency`, `amount`, `target_currency`, `amount_is`, and any of the fields below, `profile` | Which fields this payment needs beyond the amount, whether each is required, and the values Wise accepts |
+| `create_transfer` | `recipient_id`, `source_currency`, `amount`, `target_currency`, `amount_is`, `pay_in`, `reference`, `reason`, `reason_detail`, `invoice_number`, `source_of_funds`, `source_of_funds_other`, `transfer_nature`, `payment_id`, `batch_id`, `profile` | Prices it against the recipient, checks with Wise that every required field is there, and sets it up unpaid, alone or in a batch. **Approved by a person** |
+| `list_transfers` | `status`, `since`, `until`, `source_currency`, `target_currency`, `limit` (1-100), `offset`, `oldest_first`, `profile` | Transfers, newest first, from the last 90 days unless `since` says otherwise |
+| `get_transfer` | `id` | One transfer |
+| `list_transfer_payments` | `id` | How a transfer was paid: method, amount, when |
+| `get_receipt` | `id`, `save_to` | Saves the transfer's PDF receipt to a file, by default `~/Downloads/wise-receipt-<id>.pdf` |
+| `cancel_transfer` | `id` | Cancels a payment not paid yet. **Approved by a person** |
+
+`amount_is` defaults to `target`: the recipient receives exactly the amount, as
+on an invoice. `source` means the amount is what leaves your account.
+
+**The fields a payment can need**, in Wise's words, which `create_transfer`
+checks before creating anything:
+
+| Argument | Wise's field | Asked for on |
+|---|---|---|
+| `reference` | `details.reference` | The message for the recipient, on their bank statement. Every route, optional |
+| `reason` | `details.transferPurpose` | The reason for sending. Routes such as THB |
+| `reason_detail` | `details.transferPurposeSubTransferPurpose` | A more specific reason. Routes such as CNY |
+| `invoice_number` | `details.transferPurposeInvoiceNumber` | Routes such as INR |
+| `source_of_funds`, `source_of_funds_other` | `details.sourceOfFunds`, `details.sourceOfFundsOther` | Larger amounts, such as USD over 80,000 |
+| `transfer_nature` | `paymentMetadata.transferNature`, `details.transferNature` | Every payment to or from BRL |
+
+When a required one is missing, `create_transfer` stops before anything is set
+up and names it, with the values Wise accepts. A payment to or from BRL without
+`transfer_nature` is refused outright: Wise would create it, take the money,
+then block it and refund it.
+
+`payment_id` is any stable id for the request: an email's message id, an
+invoice number. The same id always becomes the same Wise transaction id, so
+asking twice, or a retry after a timeout, never sets the payment up twice.
+
+### Batches
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `create_batch` | `name`, `source_currency`, `profile` | Starts a batch: several payments from one currency, paid together in Wise |
+| `get_batch` | `batch_id`, `profile` | A batch's status and payments, and once closed, how to pay it |
+| `update_batch` | `batch_id`, `action` (`close` or `cancel`), `profile` | Closes it for paying in Wise, or cancels it with every payment in it. Closing does not pay it. **Approved by a person** |
+
+Add payments to a batch with `create_transfer` and its `batch_id`.
+
+### Not here, on purpose
+
+Wise lets a personal token do a few more things, and this server leaves them
+out: paying a transfer or a batch, moving or converting money between
+balances, and changing profile or account settings. Those move money or change
+the account itself, and stay with a person in the Wise app.
 
 ## 7. Paying safely
 
@@ -345,18 +412,22 @@ person in the Wise app or website. For most accounts Wise would refuse anyway,
 because a personal token can only fund transfers for business accounts based
 in the US, Canada, Australia, New Zealand, Singapore and Malaysia.
 
-What it can do still matters, so five tools need approval:
+What it can do still matters, so eight tools need approval:
 
 - `create_recipient`: bank details saved here are one tap from being paid
 - `update_recipient`: new bank details replace the saved ones
 - `delete_recipient`: a removed recipient has to be saved again from scratch
 - `create_transfer`: a payment set up and waiting
 - `cancel_transfer`: a cancelled transfer cannot be restarted, only set up again
+- `update_batch`: closing makes a batch payable; cancelling cancels every payment in it
+- `close_balance`: a closed balance has to be opened again
+- `order_account_details`: new bank details on your own account
 
 In a terminal that is `--confirm`, which `--agent` never adds. Over MCP a person approves each call where the client can ask: Claude Code (2.1.246 and later) shows its own prompt, and a client that can show forms asks with an approval form whose one box starts unticked. Each approval is signed, bound to that exact call and works once. Where a client can do neither, the model's `confirm: true` counts, and it should pass it only when you asked for that exact payment. `WISE_CONFIRM=model` makes `confirm: true` enough everywhere, for an agent with no person to ask, such as a scheduled job.
 
-`create_quote` is a write that needs no approval: it creates a quote on Wise's
-side, which nobody else sees and which expires by itself.
+Three writes need no approval: `create_quote` (a quote nobody else sees, which
+expires by itself), `open_balance` (an empty balance, closed again in one step)
+and `create_batch` (an empty batch).
 
 ### Turning writes off entirely
 
@@ -364,7 +435,7 @@ side, which nobody else sees and which expires by itself.
 WISE_READ_ONLY=1
 ```
 
-Every write disappears from the tool list, leaving the 9 reads. A model cannot
+Every write disappears from the tool list, leaving the 25 reads. A model cannot
 call a tool it cannot see. This is the setting for an agent that should only
 report.
 
@@ -372,7 +443,7 @@ report.
 WISE_ALLOW_DESTRUCTIVE=0
 ```
 
-Keeps pricing; refuses saving recipients, setting up payments and cancelling.
+Keeps pricing, opening balances and starting batches; refuses the eight that need approval.
 
 ### Annotations
 
@@ -380,9 +451,9 @@ Every tool carries MCP annotations, so a client can decide what to auto-approve:
 
 | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |---|---|---|---|
-| The 9 reads | true | false | true |
-| `create_quote` | false | false | false |
-| `create_recipient`, `update_recipient`, `delete_recipient`, `create_transfer`, `cancel_transfer` | false | true | false |
+| The 25 reads | true | false | true |
+| `create_quote`, `open_balance`, `create_batch` | false | false | false |
+| The 8 that need approval | false | true | false |
 
 `openWorldHint` is true on everything, because every call leaves your machine.
 
@@ -424,9 +495,12 @@ agent:
 4. If the request gives bank details, `check_bank_details` against that
    recipient. **Any field that differs: skip it and report it.** Never update
    the recipient from the request.
-5. `create_transfer` with the email's message id as `payment_id`, the invoice
+5. If the route may need more (a reason, an invoice number, BRL's transfer
+   nature), `get_transfer_requirements` says which, with the values Wise
+   accepts. `create_transfer` checks again and stops if one is missing.
+6. `create_transfer` with the email's message id as `payment_id`, the invoice
    number as `reference`, and you approve each one.
-6. Open Wise. Every payment is waiting under the transfers to pay.
+7. Open Wise. Every payment is waiting under the transfers to pay.
 
 Because `payment_id` is the message id, running the same search tomorrow
 finds the same emails and sets nothing up twice.
@@ -458,33 +532,47 @@ src/
     client.ts       one request path to Wise, profile resolution
     errors.ts       Wise's three error shapes, mapped to exit codes
   tools/
-    index.ts        the 15 tools
+    index.ts        the 36 tools
 ```
 
 Two dependencies: [Slipway](https://github.com/thenavidm/slipway), which serves
 the tools over MCP and the CLI with one write guard, and zod.
 
 **The Wise API it calls.** Wise versions its API by quarter, in the path.
-Every call uses `2026Q4` except listing transfers, which has no current-version
-reference yet and keeps its long-standing `/v1/transfers` path:
+Every call uses `2026Q4`, except reading a recipient's raw details, which uses
+`/v1/accounts/{id}`, the same recipient in Wise's older format:
 
 | Tool | Wise endpoint |
 |---|---|
-| `list_profiles` | `GET /2026Q4/profiles` |
-| `list_balances` | `GET /2026Q4/profiles/{id}/balances` |
-| `list_recipients`, `get_recipient` | `GET /2026Q4/accounts`, `GET /2026Q4/accounts/{id}` |
-| `list_transfers` | `GET /v1/transfers` |
-| `get_transfer`, `cancel_transfer` | `GET /2026Q4/transfers/{id}`, `PUT /2026Q4/transfers/{id}/cancel` |
-| `create_quote` | `POST /2026Q4/profiles/{id}/quotes` |
-| `get_recipient_requirements` | `GET /2026Q4/quotes/{id}/account-requirements` |
-| `find_recipient` | `GET /2026Q4/accounts`, every page |
+| `get_me` | `GET /2026Q4/me` |
+| `list_profiles`, `get_profile` | `GET /2026Q4/profiles`, `GET /2026Q4/profiles/{id}` |
+| `list_addresses` | `GET /2026Q4/addresses` |
+| `list_activities` | `GET /2026Q4/profiles/{id}/activities` |
+| `list_balances`, `get_balance` | `GET /2026Q4/profiles/{id}/balances`, `…/balances/{balanceId}` |
+| `get_total_funds` | `GET /2026Q4/profiles/{id}/total-funds/{currency}` |
+| `get_deposit_limit` | `GET /2026Q4/profiles/{id}/balance-capacity` |
+| `get_statement` | `GET /2026Q4/profiles/{id}/balance-statements/{balanceId}/statement.json` |
+| `open_balance`, `close_balance` | `POST /2026Q4/profiles/{id}/balances`, `DELETE …/balances/{balanceId}` |
+| `list_account_details_orders`, `order_account_details` | `GET` and `POST /2026Q4/profiles/{id}/account-details-orders` |
+| `get_rate` | `GET /2026Q4/rates` |
+| `compare_prices` | `GET /2026Q4/comparisons` |
+| `list_currencies` | `GET /2026Q4/currencies` |
+| `list_recipients`, `find_recipient`, `get_recipient` | `GET /2026Q4/accounts` (every page for `find_recipient`), `GET /2026Q4/accounts/{id}` |
 | `check_bank_details` | `GET /v1/accounts/{id}`, for the raw details |
+| `get_recipient_requirements` | `POST /2026Q4/profiles/{id}/quotes` when given a currency, then `GET /2026Q4/quotes/{id}/account-requirements` |
 | `create_recipient` | `POST /2026Q4/accounts` |
 | `update_recipient` | `GET /v1/accounts/{id}`, then `POST /2026Q4/accounts`, then `DELETE /2026Q4/accounts/{id}` |
 | `delete_recipient` | `DELETE /2026Q4/accounts/{id}` |
-| `create_transfer` | `GET /2026Q4/accounts/{id}`, then `POST /2026Q4/profiles/{id}/quotes`, then `POST /2026Q4/transfers` |
+| `create_quote` | `POST /2026Q4/profiles/{id}/quotes` |
+| `get_transfer_requirements` | `GET /2026Q4/accounts/{id}`, `POST …/quotes`, `POST /2026Q4/transfer-requirements` |
+| `create_transfer` | `GET /2026Q4/accounts/{id}`, `POST …/quotes`, `POST /2026Q4/transfer-requirements`, then `POST /2026Q4/transfers`, or `POST /2026Q4/profiles/{id}/batch-groups/{batchId}/transfers` |
+| `list_transfers` | `GET /2026Q4/transfers`, every page of the window |
+| `get_transfer`, `cancel_transfer` | `GET /2026Q4/transfers/{id}`, `PUT /2026Q4/transfers/{id}/cancel` |
+| `list_transfer_payments` | `GET /2026Q4/transfers/{id}/payments` |
+| `get_receipt` | `GET /2026Q4/transfers/{id}/receipt.pdf` |
+| `create_batch`, `get_batch`, `update_batch` | `POST /2026Q4/profiles/{id}/batch-groups`, `GET` and `PATCH …/batch-groups/{batchId}` |
 
-**Newest first.** Wise's `/v1/transfers` answers oldest first and has no documented sort, so `list_transfers` reads the whole window (90 days unless `since` says otherwise, up to 1,000 transfers) and sorts it newest first by Wise's own id before applying `limit` and `offset`.
+**Newest first.** Wise's transfer list answers oldest first and has no documented sort, so `list_transfers` reads the whole window (90 days unless `since` says otherwise, up to 1,000 transfers) and sorts it newest first by Wise's own id before applying `limit` and `offset`.
 
 **One payment, one transfer.** Wise refuses a `customerTransactionId` that is
 not a UUID, so `payment_id` becomes a UUID derived from it by SHA-256. The same
@@ -519,7 +607,7 @@ Read this before you install.
 - **Wise changes its API by quarter.** This targets `2026Q4`. `WISE_API_VERSION` moves it when a later version is needed.
 
 If any of that is more than you want to hand an agent, a Read only token, or
-`WISE_READ_ONLY=1`, gives you 9 tools that cannot change anything.
+`WISE_READ_ONLY=1`, gives you 25 tools that cannot change anything.
 
 ## 13. Troubleshooting
 
@@ -583,7 +671,7 @@ Server not appearing at all: run the command your client runs, by hand, and read
 
 See [CHANGELOG.md](CHANGELOG.md).
 
-## 14. FAQ ❓
+## 14. FAQ
 
 <details>
 <summary><b>What is an MCP server?</b></summary>
@@ -730,19 +818,30 @@ your client's config.
 
 Run into a problem or have a question? [Open an issue](https://github.com/thenavidm/wise-mcp-cli/issues) and I will help.
 
-## About the author
+## Built by
+
+<table>
+<tr>
+<td width="150" align="center" valign="top"><h3><a href="https://navid.me"><img src="https://cdn.navid.me/navid-moazzez.jpg" width="120" height="120" alt="Navid Moazzez"></a></h3></td>
+<td valign="top">
+
+### Navid Moazzez
 
 Navid Moazzez is a leading AI business strategist, and the host of the AI Creator Summit, watched by 100,000+ creators. He helps creators and founders master AI and build their own AI Operating System (AI OS) to automate their business and life. He creates useful free tools, MCP servers and CLIs that creators and founders can use in their own workflows.
 
-**Links**
+<a href="https://navid.me"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-navid-me-dark.svg"><img src="https://cdn.navid.me/repos/about-navid-me-light.svg" alt="navid.me" height="30"></picture></a>
+<a href="https://navid.bio"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-navid-bio-dark.svg"><img src="https://cdn.navid.me/repos/about-navid-bio-light.svg" alt="navid.bio" height="30"></picture></a>
+<a href="https://navid.media"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-navid-media-dark.svg"><img src="https://cdn.navid.me/repos/about-navid-media-light.svg" alt="Navid Media" height="30"></picture></a>
+<a href="https://youtube.com/@thenavidm?sub_confirmation=1"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-youtube-dark.svg"><img src="https://cdn.navid.me/repos/about-youtube-light.svg" alt="YouTube" height="30"></picture></a>
+<a href="https://youtube.com/@thenavidai?sub_confirmation=1"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-youtube-ai-dark.svg"><img src="https://cdn.navid.me/repos/about-youtube-ai-light.svg" alt="AI channel" height="30"></picture></a>
+<a href="https://x.com/thenavidm"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-x-dark.svg"><img src="https://cdn.navid.me/repos/about-x-light.svg" alt="X" height="30"></picture></a>
+<a href="https://instagram.com/thenavidm"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-instagram-dark.svg"><img src="https://cdn.navid.me/repos/about-instagram-light.svg" alt="Instagram" height="30"></picture></a>
+<a href="https://linkedin.com/in/thenavidm"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-linkedin-dark.svg"><img src="https://cdn.navid.me/repos/about-linkedin-light.svg" alt="LinkedIn" height="30"></picture></a>
+<a href="https://github.com/thenavidm"><picture><source media="(prefers-color-scheme: dark)" srcset="https://cdn.navid.me/repos/about-github-dark.svg"><img src="https://cdn.navid.me/repos/about-github-light.svg" alt="More repos" height="30"></picture></a>
 
-- Personal website: [navid.me](https://navid.me?utm_source=github&utm_medium=referral&utm_campaign=wise-mcp-cli&utm_content=readme)
-- YouTube: [@thenavidm](https://youtube.com/@thenavidm?sub_confirmation=1) and [@thenavidai](https://youtube.com/@thenavidai?sub_confirmation=1)
-- X: [@thenavidm](https://x.com/thenavidm)
-- Instagram: [@thenavidm](https://instagram.com/thenavidm)
-- LinkedIn: [thenavidm](https://linkedin.com/in/thenavidm)
-
-If this is useful, star the repo and come say hi on [X](https://x.com/thenavidm).
+</td>
+</tr>
+</table>
 
 ## Dependencies
 

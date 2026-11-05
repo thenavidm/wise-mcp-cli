@@ -7,7 +7,7 @@ One npm package, `@thenavidm/wise-mcp-cli`, contains two programs:
 | **`wise-mcp`** | the MCP server | your AI app launches it, you never do |
 | **`wise-cli`** | the command line tool | you, in a terminal |
 
-They are the same 15 tools. Install one, the other, or both.
+They are the same 36 tools. Install one, the other, or both.
 
 This page is the complete guide. The README carries a short version of the three
 most common routes, and they are repeated here so you never have to read both.
@@ -196,7 +196,7 @@ bunx @thenavidm/wise-mcp-cli --version
 | Command | What it is |
 |---|---|
 | `wise-mcp` | the MCP server. What Claude Desktop, Claude Code and Cursor launch, and not something you run yourself. |
-| `wise-cli` | the same 15 tools as shell commands. This is the one you type. |
+| `wise-cli` | the same 36 tools as shell commands. This is the one you type. |
 
 They are one program under two names, and the name only decides what happens
 when you pass no arguments: `wise-mcp` waits for a client, `wise-cli`

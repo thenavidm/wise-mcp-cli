@@ -68,6 +68,7 @@ describe("setting up a payment", () => {
       "GET /2026Q4/profiles": () => PROFILES,
       "GET /2026Q4/accounts/900": () => RECIPIENT,
       "POST /2026Q4/profiles/222/quotes": () => QUOTE,
+      "POST /2026Q4/transfer-requirements": () => [],
       "POST /2026Q4/transfers": (c) => ({ id: 55, status: "incoming_payment_waiting", targetAccount: 900, ...c.body }),
     });
     const mcp = await connect(app, { env: {}, ...approve });
@@ -170,6 +171,139 @@ describe("changing recipients", () => {
   });
 });
 
+describe("reason for sending and the other fields a route needs", () => {
+  const REQUIRES_REASON = [
+    {
+      type: "transfer",
+      fields: [
+        { name: "Reference", group: [{ key: "reference", required: false }] },
+        {
+          name: "Transfer purpose",
+          group: [{ key: "transferPurpose", required: true, valuesAllowed: [{ key: "verification.transfers.purpose.pay.bills", name: "Paying bills" }, { key: "verification.transfers.purpose.salary", name: "Salary" }] }],
+        },
+      ],
+    },
+  ];
+  const routes = (extra: Record<string, (c: any) => unknown> = {}) => ({
+    "GET /2026Q4/profiles": () => PROFILES,
+    "GET /2026Q4/accounts/900": () => RECIPIENT,
+    "POST /2026Q4/profiles/222/quotes": () => QUOTE,
+    "POST /2026Q4/transfer-requirements": (c: any) => (c.body.details?.transferPurpose ? [] : REQUIRES_REASON),
+    "POST /2026Q4/transfers": (c: any) => ({ id: 56, status: "incoming_payment_waiting", ...c.body }),
+    ...extra,
+  });
+
+  it("refuses before creating anything when the route needs a reason, and lists the reasons Wise accepts", async () => {
+    const { app, calls } = stub(routes());
+    const mcp = await connect(app, { env: {}, ...approve });
+    const result = await mcp.callTool("create_transfer", { recipient_id: 900, source_currency: "EUR", amount: 10 });
+    await mcp.close();
+    const text = JSON.stringify(result.content);
+    expect(result.isError).toBe(true);
+    expect(text).toContain("reason (Transfer purpose)");
+    expect(text).toContain("Paying bills");
+    expect(calls.some((c) => c.path === "/2026Q4/transfers")).toBe(false);
+  });
+
+  it("sends the reason, the message and the rest under Wise's own keys", async () => {
+    const { app, calls } = stub(routes());
+    const mcp = await connect(app, { env: {}, ...approve });
+    await mcp.callTool("create_transfer", {
+      recipient_id: 900,
+      source_currency: "EUR",
+      amount: 10,
+      reference: "INV-7",
+      reason: "verification.transfers.purpose.pay.bills",
+      invoice_number: "7",
+      source_of_funds: "verification.source.of.funds.other",
+      source_of_funds_other: "Client fees",
+    });
+    await mcp.close();
+    expect(calls.find((c) => c.path === "/2026Q4/transfers")!.body.details).toEqual({
+      reference: "INV-7",
+      transferPurpose: "verification.transfers.purpose.pay.bills",
+      transferPurposeInvoiceNumber: "7",
+      sourceOfFunds: "verification.source.of.funds.other",
+      sourceOfFundsOther: "Client fees",
+    });
+  });
+
+  it("refuses a BRL payment without a transfer nature, and sends it in the quote and the transfer when given", async () => {
+    const BRL = { ...RECIPIENT, currency: "BRL" };
+    const { app, calls } = stub(
+      routes({
+        "GET /2026Q4/accounts/900": () => BRL,
+        "POST /2026Q4/profiles/222/quotes": (c: any) => ({ ...QUOTE, id: "q-brl", targetCurrency: c.body.targetCurrency }),
+      }),
+    );
+    const mcp = await connect(app, { env: {}, ...approve });
+    const refused = await mcp.callTool("create_transfer", { recipient_id: 900, source_currency: "USD", amount: 50, reason: "verification.transfers.purpose.pay.bills" });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.content)).toContain("transfer_nature");
+    expect(calls.some((c) => c.path === "/2026Q4/transfers")).toBe(false);
+    await mcp.callTool("create_transfer", { recipient_id: 900, source_currency: "USD", amount: 50, reason: "verification.transfers.purpose.pay.bills", transfer_nature: "MOVING_MONEY_BETWEEN_OWN_ACCOUNTS" });
+    await mcp.close();
+    expect(calls.filter((c) => c.path.endsWith("/quotes")).at(-1)!.body.paymentMetadata).toEqual({ transferNature: "MOVING_MONEY_BETWEEN_OWN_ACCOUNTS" });
+    expect(calls.find((c) => c.path === "/2026Q4/transfers")!.body.details.transferNature).toBe("MOVING_MONEY_BETWEEN_OWN_ACCOUNTS");
+  });
+
+  it("lists what a payment needs, with our argument names", async () => {
+    const { app } = stub(routes());
+    const mcp = await connect(app, { env: {} });
+    const out = resultData(await mcp.callTool("get_transfer_requirements", { recipient_id: 900, source_currency: "EUR", amount: 10 })) as any;
+    await mcp.close();
+    expect(out.required).toEqual(["reason"]);
+    expect(out.fields[1].choices[1]).toEqual({ key: "verification.transfers.purpose.salary", name: "Salary" });
+  });
+
+  it("adds a payment to a batch, then closes the batch with the version Wise last saw", async () => {
+    const { app, calls } = stub(
+      routes({
+        "POST /2026Q4/profiles/222/batch-groups": () => ({ id: "b-1", name: "Week 45", status: "NEW", sourceCurrency: "EUR" }),
+        "POST /2026Q4/profiles/222/batch-groups/b-1/transfers": (c: any) => ({ id: 57, status: "incoming_payment_waiting", ...c.body }),
+        "GET /2026Q4/profiles/222/batch-groups/b-1": () => ({ id: "b-1", version: 3, status: "NEW" }),
+        "PATCH /2026Q4/profiles/222/batch-groups/b-1": (c: any) => ({ id: "b-1", status: c.body.status, transferIds: [57] }),
+      }),
+    );
+    const mcp = await connect(app, { env: {}, ...approve });
+    const batch = resultData(await mcp.callTool("create_batch", { name: "Week 45", source_currency: "EUR" })) as any;
+    await mcp.callTool("create_transfer", { recipient_id: 900, source_currency: "EUR", amount: 10, reason: "verification.transfers.purpose.pay.bills", batch_id: batch.batch_id });
+    const closed = resultData(await mcp.callTool("update_batch", { batch_id: "b-1", action: "close" })) as any;
+    await mcp.close();
+    expect(calls.some((c) => c.path === "/2026Q4/transfers")).toBe(false);
+    expect(calls.find((c) => c.method === "PATCH")!.body).toEqual({ status: "COMPLETED", version: 3 });
+    expect(closed).toMatchObject({ status: "COMPLETED", payments: 1 });
+    expect(closed.next_step).toMatch(/Not paid yet/);
+  });
+});
+
+describe("rates, prices and receipts", () => {
+  it("reads a rate now, and a history by day", async () => {
+    const { app, calls } = stub({
+      "GET /2026Q4/rates": (c) => (c.query.from ? [{ rate: 11.4, time: "2026-10-01" }, { rate: 11.5, time: "2026-10-02" }] : [{ rate: 11.6, time: "2026-11-06T10:00:00" }]),
+    });
+    const mcp = await connect(app, { env: {} });
+    const now = resultData(await mcp.callTool("get_rate", { source: "eur", target: "sek" })) as any;
+    const hist = resultData(await mcp.callTool("get_rate", { source: "EUR", target: "SEK", from: "2026-10-01", to: "2026-10-02" })) as any;
+    await mcp.close();
+    expect(now).toMatchObject({ source: "EUR", target: "SEK", rate: 11.6 });
+    expect(hist.history).toHaveLength(2);
+    expect(calls[1]!.query.group).toBe("day");
+  });
+
+  it("saves a receipt PDF to the path given", async () => {
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "wise-receipt-"));
+    const { app } = stub({ "GET /2026Q4/transfers/55/receipt.pdf": () => new Response("%PDF-1.7 test", { headers: { "content-type": "application/pdf" } }) });
+    const mcp = await connect(app, { env: {} });
+    const out = resultData(await mcp.callTool("get_receipt", { id: 55, save_to: join(dir, "r.pdf") })) as any;
+    await mcp.close();
+    expect(readFileSync(out.saved, "utf8")).toBe("%PDF-1.7 test");
+  });
+});
+
 describe("matching a payment request", () => {
   it("finds a recipient across every page, by name in any order and case", async () => {
     const page1 = { content: [{ id: 1, name: { fullName: "Anna Other" }, currency: "EUR" }], seekPositionForNext: 1 };
@@ -237,8 +371,8 @@ describe("which profile acts", () => {
     expect(JSON.stringify(result.content)).toContain("WISE_PROFILE_ID");
   });
 
-  it("lists transfers on the legacy path with Wise's own filter names", async () => {
-    const { app, calls } = stub({ "GET /v1/transfers": () => [{ id: 1, status: "incoming_payment_waiting", sourceValue: 10, sourceCurrency: "EUR" }] });
+  it("lists transfers with Wise's own filter names", async () => {
+    const { app, calls } = stub({ "GET /2026Q4/transfers": () => [{ id: 1, status: "incoming_payment_waiting", sourceValue: 10, sourceCurrency: "EUR" }] });
     const mcp = await connect(app, { env: { WISE_PROFILE_ID: "222" } });
     const out = resultData(await mcp.callTool("list_transfers", { status: "incoming_payment_waiting", since: "2026-11-01" })) as any;
     await mcp.close();
@@ -250,7 +384,7 @@ describe("which profile acts", () => {
   it("returns the newest transfers first, across Wise's oldest-first pages", async () => {
     const ids = Array.from({ length: 150 }, (_, i) => i + 1); // Wise's order: 1 is the oldest
     const { app, calls } = stub({
-      "GET /v1/transfers": (c) => ids.slice(Number(c.query.offset), Number(c.query.offset) + Number(c.query.limit)).map((id) => ({ id, status: "outgoing_payment_sent" })),
+      "GET /2026Q4/transfers": (c) => ids.slice(Number(c.query.offset), Number(c.query.offset) + Number(c.query.limit)).map((id) => ({ id, status: "outgoing_payment_sent" })),
     });
     const mcp = await connect(app, { env: { WISE_PROFILE_ID: "222" } });
     const newest = resultData(await mcp.callTool("list_transfers", { limit: 3 })) as any;
@@ -262,7 +396,7 @@ describe("which profile acts", () => {
     expect(next.transfers.map((t: any) => t.id)).toEqual([147, 146, 145]);
     expect(oldest.transfers.map((t: any) => t.id)).toEqual([1, 2]);
     expect(calls[0]!.query.createdDateStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(calls.filter((c) => c.path === "/v1/transfers").length).toBe(6);
+    expect(calls.filter((c) => c.path === "/2026Q4/transfers").length).toBe(6);
   });
 });
 
@@ -272,6 +406,7 @@ describe("Wise's errors", () => {
       "GET /2026Q4/profiles": () => PROFILES,
       "GET /2026Q4/accounts/900": () => RECIPIENT,
       "POST /2026Q4/profiles/222/quotes": () => QUOTE,
+      "POST /2026Q4/transfer-requirements": () => [],
       "POST /2026Q4/transfers": () =>
         new Response(JSON.stringify({ errors: [{ code: "error.quote.approval", message: "Quote cannot be accepted with this request due to missing approval." }] }), {
           status: 422,

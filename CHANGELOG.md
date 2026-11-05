@@ -2,11 +2,41 @@
 
 | Component | Version | Last Updated |
 |-----------|---------|--------------|
-| wise-mcp-cli | 1.1.0 | 2026-11-06 |
+| wise-mcp-cli | 1.2.0 | 2026-11-06 |
 | @thenavidm/slipway | 0.1.24 | 2026-11-05 |
 | Wise API | 2026Q4 | 2026-11-05 |
 
 ---
+
+## 1.2.0, 2026-11-06
+
+Every part of the Wise API a personal token may use, and the fields a payment needs before Wise pauses it. 36 tools, from 15.
+
+### What a payment needs
+
+- **`create_transfer` takes the reason for sending and the rest**: `reason`, `reason_detail`, `invoice_number`, `source_of_funds`, `source_of_funds_other` and `transfer_nature`, sent under Wise's own keys. `reference` is described as what it is, the message for the recipient.
+- **It checks with Wise before creating anything.** Between the quote and the transfer it asks Wise's transfer requirements, and a required field that is missing stops it, named, with the values Wise accepts. Before, Wise took the payment and paused it later.
+- **BRL needs a transfer nature.** Wise's docs say a payment to or from BRL without one is created and paid, then blocked and refunded. It now goes into the quote and the transfer, and a BRL payment without it is refused.
+- **`get_transfer_requirements`** lists what a payment needs, before setting it up.
+
+### Everything else a personal token may use
+
+- **Account**: `get_me`, `get_profile`, `list_addresses`, and `list_activities`, the feed the Wise app shows.
+- **Balances**: `get_balance`, `get_total_funds`, `get_deposit_limit`, `get_statement`, `open_balance`, `close_balance`, `list_account_details_orders`, `order_account_details`.
+- **Rates**: `get_rate` now or historical, `compare_prices` against banks and other providers, `list_currencies`.
+- **Transfers**: `list_transfer_payments`, and `get_receipt`, which saves the PDF.
+- **Batches**: `create_batch`, `get_batch`, `update_batch` to close or cancel. `create_transfer` takes `batch_id`.
+- **`list_transfers`** uses Wise's current `/2026Q4/transfers` and filters by source and target currency.
+- `close_balance`, `order_account_details` and `update_batch` need a person's approval, eight tools in all.
+
+### README
+
+- **The author section is the Built by card**, with the photo and the links, as in the newer house repos.
+- **The FAQ heading drops its emoji.**
+
+### Still left out, on purpose
+
+Paying a transfer or a batch, moving or converting money between balances, and changing profile or account settings.
 
 ## 1.1.0, 2026-11-06
 

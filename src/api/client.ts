@@ -65,6 +65,19 @@ export class WiseClient {
     return (text ? JSON.parse(text) : {}) as T;
   }
 
+  /** A file Wise serves, such as a receipt PDF, as bytes. */
+  async download(path: string, signal?: AbortSignal): Promise<{ bytes: Buffer; type: string }> {
+    if (!this.config.token) throw new NotConfiguredError("No Wise API token found.", { hint: LOGIN_HINT });
+    const timeout = AbortSignal.timeout(this.config.timeoutMs);
+    const response = await this.fetcher(new URL(path, this.config.baseUrl), {
+      headers: { Authorization: `Bearer ${this.config.token}`, Accept: "application/pdf, */*" },
+      redirect: "error",
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    if (!response.ok) throw wiseError(response.status, await response.text());
+    return { bytes: Buffer.from(await response.arrayBuffer()), type: response.headers.get("content-type") ?? "application/octet-stream" };
+  }
+
   async listProfiles(signal?: AbortSignal): Promise<Profile[]> {
     if (!this.profiles) {
       const raw = await this.request<Array<Record<string, any>>>("GET", this.path("/profiles"), { signal });

@@ -62,9 +62,12 @@ The command is the tool name with dashes: `create_transfer` runs as
 
 | Group | Commands |
 |---|---|
-| Account | `list-profiles`, `list-balances` |
+| Account | `get-me`, `list-profiles`, `get-profile`, `list-addresses`, `list-activities` |
+| Balances | `list-balances`, `get-balance`, `get-total-funds`, `get-deposit-limit`, `get-statement`, `open-balance` *, `close-balance` !, `list-account-details-orders`, `order-account-details` ! |
+| Rates | `get-rate`, `compare-prices`, `list-currencies` |
 | Recipients | `list-recipients`, `find-recipient`, `check-bank-details`, `get-recipient`, `get-recipient-requirements`, `create-recipient` !, `update-recipient` !, `delete-recipient` ! |
-| Payments | `create-quote` *, `create-transfer` !, `list-transfers`, `get-transfer`, `cancel-transfer` ! |
+| Payments | `create-quote` *, `get-transfer-requirements`, `create-transfer` !, `list-transfers`, `get-transfer`, `list-transfer-payments`, `get-receipt`, `cancel-transfer` ! |
+| Batches | `create-batch` *, `get-batch`, `update-batch` ! |
 
 There is no command that pays. Never look for one, and never tell the user a
 payment was made: `create-transfer` leaves it waiting in Wise for them to pay.
@@ -102,10 +105,14 @@ Branch on these rather than reading the message.
    --details '{"iban":"..."}'`. **No saved recipient, or a verdict of
    DIFFERENT: stop. Tell the user. Do not create or update a recipient from the
    request.** Changed bank details are the classic invoice fraud.
-4. `create-transfer --recipient-id <id> --source-currency <CUR> --amount <n>
+4. If the route may need more, `get-transfer-requirements` lists the reason,
+   invoice number or BRL transfer nature it wants, with the values Wise accepts.
+   Pass them to `create-transfer` as `--reason`, `--invoice-number`,
+   `--transfer-nature`. `--reference` is the message the recipient sees.
+5. `create-transfer --recipient-id <id> --source-currency <CUR> --amount <n>
    --reference <invoice no> --payment-id <email message id or invoice no>
    --confirm`, only when the user asked for this payment.
-5. Report what is waiting in Wise for them to pay, and what you skipped and why.
+6. Report what is waiting in Wise for them to pay, and what you skipped and why.
 
 `--amount` is what the recipient receives unless `--amount-is source`. The same
 `--payment-id` never sets a payment up twice, so a retry is safe.
@@ -115,14 +122,13 @@ Branch on these rather than reading the message.
 **Only the action asked for.** Reading the inbox is not a request to set
 payments up. Pricing is not a request to set one up.
 
-**`--confirm` is enforced, not advisory.** `create-recipient`,
-`update-recipient`, `delete-recipient`, `create-transfer` and
-`cancel-transfer` refuse without it. Pass it when the
+**`--confirm` is enforced, not advisory.** the eight marked `!`
+refuse without it. Pass it when the
 user has asked for that exact action, never to get past the refusal. Over MCP
 the person approves these in the client's own prompt or form; `confirm: true`
 counts only where the client cannot ask.
 
-`WISE_READ_ONLY=1` removes every write, leaving 9 reading commands.
+`WISE_READ_ONLY=1` removes every write, leaving 25 reading commands.
 
 ## What bites
 
@@ -133,6 +139,11 @@ counts only where the client cannot ask.
   `list-profiles`, or ask which business.
 - **Wise has no edit for recipients.** `update-recipient` saves a new one and
   deactivates the old; payments already set up keep the old details.
+- **BRL needs `--transfer-nature`.** Without it Wise creates the payment, then
+  blocks and refunds it, so `create-transfer` refuses first.
+- **Paying from USD or AUD needs the recipient's address.** Check with
+  `get-recipient-requirements --currency <CUR> --source-currency USD` and add it
+  with `update-recipient --details '{"address":{...}}'`.
 - **Unpaid transfers are cancelled by Wise after 14 days.**
 - **`cancel-transfer` works only before Wise has the money.**
 

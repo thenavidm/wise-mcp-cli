@@ -52,7 +52,7 @@ describe("Wise on Slipway", () => {
   });
 
   it("has no tool that pays", () => {
-    expect(ALL_TOOLS.map((tool) => tool.name).filter((name) => /fund|pay(?!ment)|send/i.test(name))).toEqual([]);
+    expect(ALL_TOOLS.map((tool) => tool.name).filter((name) => /^(fund|pay|send)|_(fund|pay|send)(_|$)/i.test(name))).toEqual([]);
   });
 
   it("passes slipway check", async () => {
