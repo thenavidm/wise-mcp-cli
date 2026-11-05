@@ -56,7 +56,10 @@
     "llm-tools",
     "cli",
     "codex",
-    "slipway"
+    "slipway",
+    "invoices",
+    "fintech",
+    "money-transfer"
   ],
   "files": [
     "dist",

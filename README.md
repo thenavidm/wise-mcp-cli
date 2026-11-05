@@ -1,3 +1,5 @@
+<img src="https://cdn.navid.me/connectors/wise-icon.png" alt="Wise" width="88">
+
 # Wise MCP Server & CLI
 
 [![npm](https://img.shields.io/npm/v/@thenavidm/wise-mcp-cli?color=orange&label=npm)](https://www.npmjs.com/package/@thenavidm/wise-mcp-cli)
@@ -17,6 +19,8 @@ the agent finds the saved recipient, prices it and sets the transfer up, and
 you open Wise and pay it.
 
 Built and maintained by [Navid Moazzez](https://navid.me?utm_source=github&utm_medium=referral&utm_campaign=wise-mcp-cli&utm_content=readme). Built on [Slipway](https://github.com/thenavidm/slipway), which turns one definition of each tool into the MCP server and the CLI.
+
+<img src="https://cdn.navid.me/repos/wise-mcp-cli-retina.gif" alt="Illustrated Wise workflow in the actual house terminal component" width="520">
 
 ## Two ways to use it
 
@@ -575,11 +579,89 @@ protocol. You never call the tools yourself, you just ask in plain language.
 </details>
 
 <details>
-<summary><b>Can it pay my invoices for me?</b></summary>
+<summary><b>Should I use the MCP server or the CLI?</b></summary>
 
-No, and that is the design. It sets each payment up with the right recipient,
-amount and reference, and you pay it in Wise. Paying is one tap there, and it
-is the one step worth keeping with a person.
+In an agent that can run commands, the CLI costs nothing until it is used. In
+claude.ai, the Claude Desktop chat or on a phone, only the server works, because
+there is no shell. [Section 5](#5-which-surface-and-what-each-costs) has the detail.
+
+</details>
+
+<details>
+<summary><b>What is Wise?</b></summary>
+
+Wise is a money transfer and multi-currency account service. Businesses use it
+to hold balances in several currencies and to pay suppliers and contractors
+abroad at the mid-market rate with a visible fee.
+
+</details>
+
+<details>
+<summary><b>Do I need to register a developer app?</b></summary>
+
+No. Wise's partner API needs a client id and an agreement with Wise, but a
+business account can create a personal API token in its own settings in a
+minute. That token is all this server needs.
+
+</details>
+
+<details>
+<summary><b>What is a personal API token, and why not my password?</b></summary>
+
+A token made for software, in Wise's settings, that you can revoke on its own
+without changing your password or signing out anywhere. It cannot change your
+login, and Wise shows it once. Your password never goes near this server.
+
+</details>
+
+<details>
+<summary><b>Is my data sent anywhere? Who can see it?</b></summary>
+
+Only to Wise. The server talks to `api.wise.com` and nothing else, keeps the
+token in memory, and has no telemetry. Your AI app sees what the tools return,
+as it would with any tool you give it.
+
+</details>
+
+<details>
+<summary><b>Can it pay without me asking?</b></summary>
+
+No. It has no tool that pays at all. It can set a payment up, and only after
+you approve that call; the payment then waits in Wise until you pay it there.
+
+</details>
+
+<details>
+<summary><b>Can it set up a payment or save bank details by accident?</b></summary>
+
+Each of those waits for your approval, naming what it is about to do. A payment
+set up by mistake is cancelled with `cancel_transfer` before you pay it, and
+Wise cancels any left unpaid for 14 days.
+
+</details>
+
+<details>
+<summary><b>What can it do that the app cannot?</b></summary>
+
+Read payment requests from your email with another tool and set each one up
+for you in one go, with the invoice number as the reference, without setting
+any up twice. You still pay them in the app, which is the point.
+
+</details>
+
+<details>
+<summary><b>Does it cost anything?</b></summary>
+
+The server is free and MIT licensed. Wise charges its usual fees on payments
+you make; `create_quote` shows the fee before anything is set up.
+
+</details>
+
+<details>
+<summary><b>Does it work with ChatGPT and Cursor, or only Claude?</b></summary>
+
+Anything that speaks MCP: Claude Code, Claude Desktop, Codex, Cursor, Windsurf,
+VS Code and others. [INSTALL.md](INSTALL.md) has each one.
 
 </details>
 
@@ -589,6 +671,15 @@ is the one step worth keeping with a person.
 Wise gives API tokens to business accounts. A business login usually also
 holds a personal profile, which `list_profiles` shows, but setting payments up
 is meant for the business profile.
+
+</details>
+
+<details>
+<summary><b>Can I use it with more than one business?</b></summary>
+
+Yes, if one Wise login holds them. Pass `profile` on each call, or set
+`WISE_PROFILE_ID`. With two business profiles and neither, the server refuses
+rather than guess. See [section 9](#9-several-profiles).
 
 </details>
 
