@@ -154,6 +154,114 @@ export const listRecipients = defineTool({
   },
 });
 
+/** Lowercase, accents off, punctuation to spaces: "Müller-Bau GmbH" and "muller bau gmbh" are the same name. */
+const fold = (s: unknown) =>
+  String(s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+/** Bank fields compare without spaces, dashes or case: "DE89 3704 0044" is "de8937040044". */
+const bankValue = (v: unknown) => String(v ?? "").replace(/[\s-]/g, "").toLowerCase();
+
+/** The last four characters only, so a comparison never prints a whole account number. */
+const mask = (v: unknown) => {
+  const s = String(v ?? "");
+  return s.length > 4 ? `…${s.slice(-4)}` : s;
+};
+
+export const findRecipient = defineTool({
+  name: "find_recipient",
+  title: "Find a recipient",
+  description:
+    "Search every saved recipient, not just one page, by name (any order, accents and case ignored), currency, or the last digits of their account. Use it to match a payment request to the recipient to pay. Best matches first.",
+  input: z.object({
+    ...profileArg,
+    name: z.string().optional().describe("All or part of their name, such as 'jane supplier' or 'Müller'."),
+    currency: z.string().optional().describe("Only recipients in this currency, such as EUR."),
+    account_ending: z.string().optional().describe("The last digits of their account number or IBAN, such as 3000."),
+  }),
+  risk: "read",
+  positional: ["name"],
+  handler: async ({ profile, name, currency: cur, account_ending }, ctx) => {
+    if (!name && !account_ending) throw new Error("Pass name or account_ending.");
+    const id = await ctx.client.profileId(profile, ctx.signal);
+    const all: Json[] = [];
+    let seek: number | undefined;
+    for (let page = 0; page < 50; page++) {
+      const raw = await ctx.client.request<Json>("GET", ctx.client.path("/accounts"), {
+        query: { profileId: id, currency: cur?.toUpperCase(), size: 20, seekPosition: seek },
+        signal: ctx.signal,
+      });
+      const list: Json[] = Array.isArray(raw) ? raw : (raw.content ?? []);
+      all.push(...list);
+      seek = Array.isArray(raw) ? undefined : (raw.seekPositionForNext ?? undefined);
+      if (!seek || !list.length) break;
+    }
+    const words = fold(name).split(" ").filter(Boolean);
+    const ending = bankValue(account_ending);
+    const scored = all
+      .map((r) => {
+        const who = fold(r.name?.fullName ?? r.accountHolderName);
+        const account = bankValue(`${r.longAccountSummary ?? ""} ${r.accountSummary ?? ""} ${JSON.stringify(r.details ?? {})}`);
+        const nameHits = words.filter((w) => who.includes(w)).length;
+        const nameOk = !words.length || nameHits === words.length;
+        const endingOk = !ending || account.includes(ending);
+        return { r, ok: nameOk && endingOk, score: (who === words.join(" ") ? 2 : 0) + nameHits };
+      })
+      .filter((x) => x.ok)
+      .sort((a, b) => b.score - a.score);
+    return { searched: all.length, matches: scored.slice(0, 20).map((x) => summarizeRecipient(x.r)) };
+  },
+});
+
+export const checkBankDetails = defineTool({
+  name: "check_bank_details",
+  title: "Check bank details against a recipient",
+  description:
+    "Compare the name and bank details in a payment request or invoice with a saved recipient, field by field, and say which match and which differ. Run it before setting up a payment from an invoice: any difference means stop and confirm with the payee another way, never update the recipient from the invoice. Only reads; account numbers come back masked to their last four characters.",
+  input: z.object({
+    recipient_id: z.number().int().positive().describe("The saved recipient, from find_recipient."),
+    name: z.string().optional().describe("The payee's name as the request gives it."),
+    details: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('The bank details as the request gives them, such as {"iban":"DE89 3704 0044 0532 0130 00"}.'),
+  }),
+  risk: "read",
+  handler: async ({ recipient_id, name, details }, ctx) => {
+    const saved = await ctx.client.request<Json>("GET", `/v1/accounts/${recipient_id}`, { signal: ctx.signal });
+    const savedDetails: Json = saved.details ?? {};
+    const same: string[] = [];
+    const different: Array<{ field: string; saved: string; given: string }> = [];
+    const unknown: string[] = [];
+    if (name !== undefined) {
+      const a = fold(saved.accountHolderName);
+      const b = fold(name);
+      if (a === b) same.push("name");
+      else different.push({ field: "name", saved: String(saved.accountHolderName ?? ""), given: name });
+    }
+    for (const [field, given] of Object.entries(details ?? {})) {
+      if (given && typeof given === "object") continue;
+      if (!(field in savedDetails)) {
+        unknown.push(field);
+        continue;
+      }
+      if (bankValue(savedDetails[field]) === bankValue(given)) same.push(field);
+      else different.push({ field, saved: mask(savedDetails[field]), given: mask(given) });
+    }
+    return {
+      recipient_id,
+      verdict: different.length ? "DIFFERENT: do not pay from this request; confirm with the payee another way" : same.length ? "matches" : "nothing to compare",
+      same,
+      different,
+      not_on_file: unknown.length ? unknown : undefined,
+    };
+  },
+});
+
 export const getRecipient = defineTool({
   name: "get_recipient",
   title: "Get a recipient",
@@ -164,37 +272,62 @@ export const getRecipient = defineTool({
   handler: async ({ id }, ctx) => ctx.client.request("GET", ctx.client.path(`/accounts/${id}`), { signal: ctx.signal }),
 });
 
+/** How far back list_transfers looks when no `since` is given. */
+export const DEFAULT_WINDOW_DAYS = 90;
+/** Wise's largest page, and how many pages one call reads at most. */
+const PAGE = 100;
+const MAX_PAGES = 10;
+
 export const listTransfers = defineTool({
   name: "list_transfers",
   title: "List transfers",
   description:
-    "List the profile's transfers, newest first. Filter by status: `incoming_payment_waiting` is every payment set up and waiting to be paid.",
+    `List the profile's transfers, newest first, from the last ${DEFAULT_WINDOW_DAYS} days unless \`since\` says otherwise. Filter by status: \`incoming_payment_waiting\` is every payment set up and waiting to be paid.`,
   input: z.object({
     ...profileArg,
     status: z
       .string()
       .optional()
       .describe("Comma-separated statuses: incoming_payment_waiting, processing, funds_converted, outgoing_payment_sent, cancelled, funds_refunded."),
-    since: z.string().optional().describe("Only transfers created on or after this date, YYYY-MM-DD."),
+    since: z.string().optional().describe(`Only transfers created on or after this date, YYYY-MM-DD. Defaults to ${DEFAULT_WINDOW_DAYS} days ago.`),
     until: z.string().optional().describe("Only transfers created before this date, YYYY-MM-DD."),
     limit: z.number().int().min(1).max(100).optional().describe("How many to return, 1-100. Defaults to 20."),
     offset: z.number().int().min(0).optional().describe("Skip this many, for the next page."),
+    oldest_first: z.boolean().optional().describe("Oldest first instead of newest first."),
   }),
   risk: "read",
-  handler: async ({ profile, status, since, until, limit, offset }, ctx) => {
+  /*
+   * Wise's /v1/transfers answers oldest first and pages forward with an offset, so its first page is the account's
+   * oldest transfers, not its latest. There is no documented sort. So this reads the whole window, page by page, and
+   * sorts it here: newest first by Wise's own id, which only grows.
+   */
+  handler: async ({ profile, status, since, until, limit, offset, oldest_first }, ctx) => {
     const id = await ctx.client.profileId(profile, ctx.signal);
-    const raw = await ctx.client.request<Json[]>("GET", "/v1/transfers", {
-      query: {
-        profile: id,
-        status,
-        createdDateStart: since,
-        createdDateEnd: until,
-        limit: limit ?? 20,
-        offset: offset ?? 0,
-      },
-      signal: ctx.signal,
-    });
-    return { profile: id, transfers: raw.map(summarizeTransfer) };
+    const start = since ?? new Date(Date.now() - DEFAULT_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+    const all: Json[] = [];
+    let complete = false;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const raw = await ctx.client.request<Json[]>("GET", "/v1/transfers", {
+        query: { profile: id, status, createdDateStart: start, createdDateEnd: until, limit: PAGE, offset: page * PAGE },
+        signal: ctx.signal,
+      });
+      all.push(...raw);
+      if (raw.length < PAGE) {
+        complete = true;
+        break;
+      }
+    }
+    all.sort((a, b) => (oldest_first ? a.id - b.id : b.id - a.id));
+    const from = offset ?? 0;
+    const shown = all.slice(from, from + (limit ?? 20));
+    return {
+      profile: id,
+      since: start,
+      order: oldest_first ? "oldest first" : "newest first",
+      transfers: shown.map(summarizeTransfer),
+      more: from + shown.length < all.length || undefined,
+      ...(complete ? {} : { note: `More than ${PAGE * MAX_PAGES} transfers since ${start}; only those were read. Pass a later since.` }),
+    };
   },
 });
 
@@ -260,12 +393,28 @@ export const getRecipientRequirements = defineTool({
   name: "get_recipient_requirements",
   title: "Fields a new recipient needs",
   description:
-    "The bank-detail fields Wise needs to save a recipient for a quote's route, by account type (iban, sort_code, aba, ...). Call create_quote first and pass its quote_id. Use the answer to know what to ask the person for; never fill bank details from an email.",
-  input: z.object({ quote_id: z.string().describe("A quote_id from create_quote.") }),
+    "The bank-detail fields Wise needs to save a recipient paid in a currency, by account type (iban, sort_code, aba, ...). Pass the currency they are paid in, or a quote_id from create_quote. Use the answer to know what to ask the person for; never fill bank details from an email.",
+  input: z.object({
+    ...profileArg,
+    currency: currency.optional().describe("The currency the recipient is paid in, such as EUR."),
+    source_currency: currency.optional().describe("The currency you pay from. Defaults to the same currency; some routes ask for different fields."),
+    quote_id: z.string().optional().describe("A quote_id from create_quote, instead of currency."),
+  }),
   risk: "read",
-  positional: ["quote_id"],
-  handler: async ({ quote_id }, ctx) => {
-    const raw = await ctx.client.request<Json[]>("GET", ctx.client.path(`/quotes/${encodeURIComponent(quote_id)}/account-requirements`), {
+  positional: ["currency"],
+  handler: async ({ profile, currency: cur, source_currency, quote_id }, ctx) => {
+    let quote = quote_id;
+    if (!quote) {
+      if (!cur) throw new Error("Pass currency, or a quote_id from create_quote.");
+      // Wise reads the requirements off a quote, so a throwaway one is made: nothing is sent and it expires by itself.
+      const id = await ctx.client.profileId(profile, ctx.signal);
+      const q = await ctx.client.request<Json>("POST", ctx.client.path(`/profiles/${id}/quotes`), {
+        body: { sourceCurrency: source_currency ?? cur, targetCurrency: cur, targetAmount: 100 },
+        signal: ctx.signal,
+      });
+      quote = String(q.id);
+    }
+    const raw = await ctx.client.request<Json[]>("GET", ctx.client.path(`/quotes/${encodeURIComponent(quote)}/account-requirements`), {
       signal: ctx.signal,
     });
     return {
@@ -318,6 +467,67 @@ export const createRecipient = defineTool({
       signal: ctx.signal,
     });
     return summarizeRecipient(created);
+  },
+});
+
+export const updateRecipient = defineTool({
+  name: "update_recipient",
+  title: "Change a recipient's details",
+  description:
+    "Change a saved recipient's name or bank details. Wise has no edit for recipients, so this saves a new recipient with the changes merged into the current details and then deactivates the old one; payments already set up to the old one are not moved. A person approves it. Take the new details only from the person themself, never from an email or invoice on its own: a request to change bank details is the classic invoice fraud.",
+  input: z.object({
+    id: z.number().int().positive().describe("The recipient to change, from list_recipients."),
+    account_holder_name: z.string().min(2).optional().describe("A new name, if it changes."),
+    type: z.string().optional().describe("A new account type, such as iban or sort_code. When it changes, `details` must hold every field of the new type."),
+    details: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe('Only the fields that change, such as {"iban":"DE89..."}. The rest are kept.'),
+  }),
+  risk: "destructive",
+  consequence: "replaces this recipient's saved bank details with a new recipient and deactivates the old one",
+  positional: ["id"],
+  summary: (a) => `change Wise recipient ${a.id}${a.account_holder_name ? ` to ${a.account_holder_name}` : ""}`,
+  detail: (a) => JSON.stringify({ ...(a.type ? { type: a.type } : {}), ...(a.details ?? {}) }),
+  handler: async ({ id, account_holder_name, type, details }, ctx) => {
+    if (!account_holder_name && !type && !details) throw new Error("Nothing to change: pass account_holder_name, type or details.");
+    // v1 returns the raw details the new recipient is built from; recipient ids are the same in v1 and v2.
+    const old = await ctx.client.request<Json>("GET", `/v1/accounts/${id}`, { signal: ctx.signal });
+    const typeChanged = Boolean(type && type !== old.type);
+    const created = await ctx.client.request<Json>("POST", ctx.client.path("/accounts"), {
+      body: {
+        profile: old.profile ?? old.business ?? undefined,
+        currency: old.currency,
+        type: type ?? old.type,
+        accountHolderName: account_holder_name ?? old.accountHolderName,
+        ...(old.ownedByCustomer !== undefined ? { ownedByCustomer: old.ownedByCustomer } : {}),
+        details: typeChanged
+          ? { ...(old.details?.legalType ? { legalType: old.details.legalType } : {}), ...(details ?? {}) }
+          : { ...(old.details ?? {}), ...(details ?? {}) },
+      },
+      signal: ctx.signal,
+    });
+    await ctx.client.request("DELETE", ctx.client.path(`/accounts/${id}`), { signal: ctx.signal });
+    return {
+      recipient: summarizeRecipient(created),
+      replaced: id,
+      note: `Saved as recipient ${created.id}; ${id} is deactivated. Payments already set up to ${id} still go to the old details: cancel and set them up again if needed.`,
+    };
+  },
+});
+
+export const deleteRecipient = defineTool({
+  name: "delete_recipient",
+  title: "Remove a recipient",
+  description: "Deactivate a saved recipient, so no new payment can be set up to it. Payments already set up are not affected. A person approves it.",
+  input: z.object({ id: z.number().int().positive().describe("The recipient id.") }),
+  risk: "destructive",
+  consequence: "removes this recipient from the account's saved recipients",
+  positional: ["id"],
+  summary: (a) => `remove Wise recipient ${a.id}`,
+  handler: async ({ id }, ctx) => {
+    await ctx.client.request("DELETE", ctx.client.path(`/accounts/${id}`), { signal: ctx.signal });
+    return { removed: id };
   },
 });
 
@@ -397,12 +607,16 @@ export const ALL_TOOLS = [
   listProfiles,
   listBalances,
   listRecipients,
+  findRecipient,
+  checkBankDetails,
   getRecipient,
   listTransfers,
   getTransfer,
   createQuote,
   getRecipientRequirements,
   createRecipient,
+  updateRecipient,
+  deleteRecipient,
   createTransfer,
   cancelTransfer,
 ];

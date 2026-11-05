@@ -2,11 +2,25 @@
 
 | Component | Version | Last Updated |
 |-----------|---------|--------------|
-| wise-mcp-cli | 1.0.0 | 2026-11-05 |
+| wise-mcp-cli | 1.1.0 | 2026-11-06 |
 | @thenavidm/slipway | 0.1.24 | 2026-11-05 |
 | Wise API | 2026Q4 | 2026-11-05 |
 
 ---
+
+## 1.1.0, 2026-11-06
+
+Recipients, the part of a payment run that takes the time. 15 tools, from 11.
+
+- **`find_recipient`** searches every saved recipient, not one page of 20: by name with the words in any order and accents and case ignored, by currency, or by the last digits of the account. Best match first.
+- **`check_bank_details`** compares the name and bank details in an invoice with a saved recipient, field by field, ignoring spaces and case, and says which match and which differ, account numbers masked to their last four. A difference is the invoice-fraud signal, so the verdict says to stop and confirm another way. It only reads.
+- **`update_recipient`** changes a recipient's name or bank details. Wise has no edit for recipients, so it saves a new one with the changes merged into the current details and then deactivates the old one, in that order, so a change Wise refuses leaves the recipient as it was. A changed account type starts the details afresh.
+- **`delete_recipient`** deactivates a recipient.
+- **`get_recipient_requirements` takes a currency.** It asked for a quote id; it now makes the throwaway quote itself, which sends nothing.
+- Both writes need a person's approval, like the other three.
+- **`list_transfers` returns the newest transfers first**, as it always said. Wise's `/v1/transfers` answers oldest first and pages forward, and 1.0.0 passed that order through, so `limit 20` showed the account's 20 oldest transfers. It now reads the window, by default the last 90 days, page by page up to 1,000 transfers, and sorts it newest first by Wise's id before `limit` and `offset`. The result names the window and the order, and says when there are more.
+- **`oldest_first`** gives the old order back when wanted.
+- **A test pins it**: 150 transfers in Wise's order come back 150, 149, 148, and the next page 147, 146, 145.
 
 ## 1.0.0, 2026-11-05
 

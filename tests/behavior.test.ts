@@ -103,6 +103,107 @@ describe("setting up a payment", () => {
   });
 });
 
+describe("changing recipients", () => {
+  const OLD = { id: 900, profile: 222, currency: "EUR", type: "iban", accountHolderName: "Jane Supplier", details: { legalType: "BUSINESS", iban: "DE89370400440532013000", address: { city: "Berlin" } } };
+
+  it("saves the changes as a new recipient, merged into the current details, then deactivates the old one", async () => {
+    const { app, calls } = stub({
+      "GET /v1/accounts/900": () => OLD,
+      "POST /2026Q4/accounts": (c) => ({ id: 901, currency: c.body.currency, type: c.body.type, accountHolderName: c.body.accountHolderName }),
+      "DELETE /2026Q4/accounts/900": () => new Response(null, { status: 204 }),
+    });
+    const mcp = await connect(app, { env: {}, ...approve });
+    const out = resultData(await mcp.callTool("update_recipient", { id: 900, details: { iban: "NL91ABNA0417164300" } })) as any;
+    await mcp.close();
+    const created = calls.find((c) => c.method === "POST")!;
+    expect(created.body).toEqual({
+      profile: 222,
+      currency: "EUR",
+      type: "iban",
+      accountHolderName: "Jane Supplier",
+      details: { legalType: "BUSINESS", iban: "NL91ABNA0417164300", address: { city: "Berlin" } },
+    });
+    // The new one exists before the old one goes, so a failure in between never leaves no recipient.
+    expect(calls.map((c) => c.method)).toEqual(["GET", "POST", "DELETE"]);
+    expect(out.recipient.id).toBe(901);
+    expect(out.replaced).toBe(900);
+  });
+
+  it("starts the details afresh when the account type changes", async () => {
+    const { app, calls } = stub({
+      "GET /v1/accounts/900": () => OLD,
+      "POST /2026Q4/accounts": () => ({ id: 902 }),
+      "DELETE /2026Q4/accounts/900": () => new Response(null, { status: 204 }),
+    });
+    const mcp = await connect(app, { env: {}, ...approve });
+    await mcp.callTool("update_recipient", { id: 900, type: "sort_code", details: { sortCode: "040075", accountNumber: "37778842" } });
+    await mcp.close();
+    expect(calls.find((c) => c.method === "POST")!.body.details).toEqual({ legalType: "BUSINESS", sortCode: "040075", accountNumber: "37778842" });
+  });
+
+  it("keeps the old recipient when Wise refuses the new details", async () => {
+    const { app, calls } = stub({
+      "GET /v1/accounts/900": () => OLD,
+      "POST /2026Q4/accounts": () => new Response(JSON.stringify({ errors: [{ code: "NOT_VALID", path: "iban", message: "Please specify a valid IBAN." }] }), { status: 422 }),
+    });
+    const mcp = await connect(app, { env: {}, ...approve });
+    const result = await mcp.callTool("update_recipient", { id: 900, details: { iban: "nope" } });
+    await mcp.close();
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain("valid IBAN");
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("reads the fields a recipient needs from just a currency", async () => {
+    const { app, calls } = stub({
+      "GET /2026Q4/profiles": () => PROFILES,
+      "POST /2026Q4/profiles/222/quotes": () => ({ id: "q-req" }),
+      "GET /2026Q4/quotes/q-req/account-requirements": () => [
+        { type: "iban", title: "IBAN", fields: [{ name: "IBAN", group: [{ key: "iban", required: true, example: "DE89..." }] }] },
+      ],
+    });
+    const mcp = await connect(app, { env: {} });
+    const out = resultData(await mcp.callTool("get_recipient_requirements", { currency: "eur" })) as any;
+    await mcp.close();
+    expect(calls.find((c) => c.method === "POST")!.body).toEqual({ sourceCurrency: "EUR", targetCurrency: "EUR", targetAmount: 100 });
+    expect(out.types[0].fields[0]).toMatchObject({ key: "iban", required: true });
+  });
+});
+
+describe("matching a payment request", () => {
+  it("finds a recipient across every page, by name in any order and case", async () => {
+    const page1 = { content: [{ id: 1, name: { fullName: "Anna Other" }, currency: "EUR" }], seekPositionForNext: 1 };
+    const page2 = { content: [{ id: 2, name: { fullName: "Müller-Bau GmbH" }, currency: "EUR", longAccountSummary: "IBAN ending 3000" }] };
+    const { app, calls } = stub({
+      "GET /2026Q4/accounts": (c) => (c.query.seekPosition ? page2 : page1),
+    });
+    const mcp = await connect(app, { env: { WISE_PROFILE_ID: "222" } });
+    const byName = resultData(await mcp.callTool("find_recipient", { name: "gmbh muller" })) as any;
+    const byEnding = resultData(await mcp.callTool("find_recipient", { account_ending: "3000" })) as any;
+    await mcp.close();
+    expect(byName.searched).toBe(2);
+    expect(byName.matches.map((m: any) => m.id)).toEqual([2]);
+    expect(byEnding.matches.map((m: any) => m.id)).toEqual([2]);
+    expect(calls.filter((c) => c.path === "/2026Q4/accounts").length).toBe(4);
+  });
+
+  it("flags bank details that differ from the saved recipient, masked", async () => {
+    const { app } = stub({
+      "GET /v1/accounts/900": () => ({ id: 900, accountHolderName: "Jane Supplier", details: { iban: "DE89370400440532013000", bic: "COBADEFFXXX" } }),
+    });
+    const mcp = await connect(app, { env: {} });
+    const ok = resultData(await mcp.callTool("check_bank_details", { recipient_id: 900, name: "jane  SUPPLIER", details: { iban: "DE89 3704 0044 0532 0130 00" } })) as any;
+    const bad = resultData(await mcp.callTool("check_bank_details", { recipient_id: 900, details: { iban: "GB33BUKB20201555555555", swift: "X" } })) as any;
+    await mcp.close();
+    expect(ok.verdict).toBe("matches");
+    expect(ok.same).toEqual(["name", "iban"]);
+    expect(bad.verdict).toMatch(/^DIFFERENT/);
+    expect(bad.different).toEqual([{ field: "iban", saved: "…3000", given: "…5555" }]);
+    expect(bad.not_on_file).toEqual(["swift"]);
+    expect(JSON.stringify(bad)).not.toContain("GB33BUKB");
+  });
+});
+
 describe("one payment request, one transfer", () => {
   it("turns the same payment id into the same UUID every time", () => {
     const id = transactionId("<CAF=abc123@mail.gmail.com>");
@@ -141,8 +242,27 @@ describe("which profile acts", () => {
     const mcp = await connect(app, { env: { WISE_PROFILE_ID: "222" } });
     const out = resultData(await mcp.callTool("list_transfers", { status: "incoming_payment_waiting", since: "2026-11-01" })) as any;
     await mcp.close();
-    expect(calls[0]!.query).toEqual({ profile: "222", status: "incoming_payment_waiting", createdDateStart: "2026-11-01", limit: "20", offset: "0" });
+    expect(calls[0]!.query).toEqual({ profile: "222", status: "incoming_payment_waiting", createdDateStart: "2026-11-01", limit: "100", offset: "0" });
     expect(out.transfers[0].source).toBe("10 EUR");
+  });
+
+  /* Wise answers oldest first. 1.0.0 passed that through, so a limit of 20 showed the account's 20 oldest transfers. */
+  it("returns the newest transfers first, across Wise's oldest-first pages", async () => {
+    const ids = Array.from({ length: 150 }, (_, i) => i + 1); // Wise's order: 1 is the oldest
+    const { app, calls } = stub({
+      "GET /v1/transfers": (c) => ids.slice(Number(c.query.offset), Number(c.query.offset) + Number(c.query.limit)).map((id) => ({ id, status: "outgoing_payment_sent" })),
+    });
+    const mcp = await connect(app, { env: { WISE_PROFILE_ID: "222" } });
+    const newest = resultData(await mcp.callTool("list_transfers", { limit: 3 })) as any;
+    const next = resultData(await mcp.callTool("list_transfers", { limit: 3, offset: 3 })) as any;
+    const oldest = resultData(await mcp.callTool("list_transfers", { limit: 2, oldest_first: true })) as any;
+    await mcp.close();
+    expect(newest.transfers.map((t: any) => t.id)).toEqual([150, 149, 148]);
+    expect(newest.more).toBe(true);
+    expect(next.transfers.map((t: any) => t.id)).toEqual([147, 146, 145]);
+    expect(oldest.transfers.map((t: any) => t.id)).toEqual([1, 2]);
+    expect(calls[0]!.query.createdDateStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(calls.filter((c) => c.path === "/v1/transfers").length).toBe(6);
   });
 });
 

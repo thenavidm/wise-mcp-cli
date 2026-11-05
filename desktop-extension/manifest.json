@@ -2,8 +2,8 @@
   "manifest_version": "0.2",
   "name": "wise",
   "display_name": "Wise",
-  "version": "1.0.0",
-  "description": "Wise MCP server for Claude and AI agents. 11 tools for balances, recipients, quotes and transfers on a Wise business account, with every payment set up unpaid for you to pay in Wise.",
+  "version": "1.1.0",
+  "description": "Wise MCP server for Claude and AI agents. 15 tools for balances, recipients, quotes and transfers on a Wise business account, with every payment set up unpaid for you to pay in Wise.",
   "long_description": "Connects Claude to a Wise business account with a personal API token from wise.com/settings/api-tokens.\n\nIt sets payments up and never pays them: a transfer made here waits in Wise until you pay it in the Wise app or website. There is no tool that moves money.\n\nSaving a recipient, setting up a payment and cancelling one each wait for your approval.",
   "author": {
     "name": "Navid Moazzez",

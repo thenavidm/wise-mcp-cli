@@ -63,7 +63,7 @@ The command is the tool name with dashes: `create_transfer` runs as
 | Group | Commands |
 |---|---|
 | Account | `list-profiles`, `list-balances` |
-| Recipients | `list-recipients`, `get-recipient`, `get-recipient-requirements`, `create-recipient` ! |
+| Recipients | `list-recipients`, `find-recipient`, `check-bank-details`, `get-recipient`, `get-recipient-requirements`, `create-recipient` !, `update-recipient` !, `delete-recipient` ! |
 | Payments | `create-quote` *, `create-transfer` !, `list-transfers`, `get-transfer`, `cancel-transfer` ! |
 
 There is no command that pays. Never look for one, and never tell the user a
@@ -97,9 +97,10 @@ Branch on these rather than reading the message.
 ## Setting up a payment from a request
 
 1. Read the request: payee, amount, currency, reference, due date.
-2. `list-recipients --currency <CUR>` and match the payee by name.
-3. **No saved recipient, or bank details in the request that differ from the
-   saved ones: stop. Tell the user. Do not create a recipient from the
+2. `find-recipient --name "<payee>" --currency <CUR>` to match the payee.
+3. If the request gives bank details, `check-bank-details --recipient-id <id>
+   --details '{"iban":"..."}'`. **No saved recipient, or a verdict of
+   DIFFERENT: stop. Tell the user. Do not create or update a recipient from the
    request.** Changed bank details are the classic invoice fraud.
 4. `create-transfer --recipient-id <id> --source-currency <CUR> --amount <n>
    --reference <invoice no> --payment-id <email message id or invoice no>
@@ -115,12 +116,13 @@ Branch on these rather than reading the message.
 payments up. Pricing is not a request to set one up.
 
 **`--confirm` is enforced, not advisory.** `create-recipient`,
-`create-transfer` and `cancel-transfer` refuse without it. Pass it when the
+`update-recipient`, `delete-recipient`, `create-transfer` and
+`cancel-transfer` refuse without it. Pass it when the
 user has asked for that exact action, never to get past the refusal. Over MCP
 the person approves these in the client's own prompt or form; `confirm: true`
 counts only where the client cannot ask.
 
-`WISE_READ_ONLY=1` removes every write, leaving 7 reading commands.
+`WISE_READ_ONLY=1` removes every write, leaving 9 reading commands.
 
 ## What bites
 
@@ -129,6 +131,8 @@ counts only where the client cannot ask.
   will not help.
 - **"More than one Wise profile"**: pass `--profile <id>` from
   `list-profiles`, or ask which business.
+- **Wise has no edit for recipients.** `update-recipient` saves a new one and
+  deactivates the old; payments already set up keep the old details.
 - **Unpaid transfers are cancelled by Wise after 14 days.**
 - **`cancel-transfer` works only before Wise has the money.**
 

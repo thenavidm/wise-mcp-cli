@@ -8,7 +8,7 @@
 [![X](https://img.shields.io/badge/X-@thenavidm-black?logo=x)](https://x.com/thenavidm)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-thenavidm-0A66C2?logo=linkedin&logoColor=white)](https://linkedin.com/in/thenavidm)
 
-Wise MCP server and CLI for Claude Code, Codex and AI agents. 11 tools for balances, recipients, quotes and transfers on a Wise business account.
+Wise MCP server and CLI for Claude Code, Codex and AI agents. 15 tools for balances, recipients, quotes and transfers on a Wise business account, plus the checks a payment run needs: find any saved recipient, and compare an invoice's bank details with the saved ones.
 
 It sets payments up and never pays them. A transfer made here waits in Wise,
 unpaid, until a person pays it in the Wise app or website. There is no tool
@@ -77,16 +77,19 @@ is the tool name with dashes.
 | Profiles this token can act for | `wise-cli list-profiles` | `list_profiles` |
 | Balances | `wise-cli list-balances` | `list_balances` |
 | Saved recipients | `wise-cli list-recipients` / `get-recipient` | `list_recipients` / `get_recipient` |
+| Find any recipient, every page | `wise-cli find-recipient` | `find_recipient` |
+| Check an invoice's bank details | `wise-cli check-bank-details` | `check_bank_details` |
 | Transfers | `wise-cli list-transfers` / `get-transfer` | `list_transfers` / `get_transfer` |
 | Price a payment | `wise-cli create-quote` | `create_quote` |
 | Fields a new recipient needs | `wise-cli get-recipient-requirements` | `get_recipient_requirements` |
 | Save a recipient | `wise-cli create-recipient` | `create_recipient` |
+| Change or remove a recipient | `wise-cli update-recipient` / `delete-recipient` | `update_recipient` / `delete_recipient` |
 | Set up a payment, unpaid | `wise-cli create-transfer` | `create_transfer` |
 | Cancel an unpaid payment | `wise-cli cancel-transfer` | `cancel_transfer` |
 | Check your setup | `wise-cli doctor` | not a tool |
 | Pay a transfer | not a command | not a tool, on purpose |
 
-All 11 with their arguments are in [section 6](#6-tools).
+All 15 with their arguments are in [section 6](#6-tools).
 
 ## Contents
 
@@ -97,7 +100,7 @@ All 11 with their arguments are in [section 6](#6-tools).
 | 3 | [Install](#3-install) | Every client, copy and paste, plus the shell |
 | 4 | [Output and exit codes](#4-output-and-exit-codes) | What scripts branch on |
 | 5 | [Which surface, and what each costs](#5-which-surface-and-what-each-costs) | Context cost, and how to spend less |
-| 6 | [Tools](#6-tools) | All 11, with arguments |
+| 6 | [Tools](#6-tools) | All 15, with arguments |
 | 7 | [Paying safely](#7-paying-safely) | Why nothing here can pay |
 | 8 | [Payment requests by email](#8-payment-requests-by-email) | The workflow this was built for |
 | 9 | [Several profiles](#9-several-profiles) | Personal and business, or two businesses |
@@ -259,7 +262,7 @@ transfer and never creates a second one.
 
 ## 5. Which surface, and what each costs
 
-Both surfaces are the same program with the same 11 tools. The difference is
+Both surfaces are the same program with the same 15 tools. The difference is
 when the model pays for them.
 
 | Cost | MCP server | CLI |
@@ -270,7 +273,7 @@ when the model pays for them.
 
 These are measured in Claude Code, never estimated from characters, and will
 be filled in with the date and Claude Code version before the first release is
-announced. The schemas of all 11 tools total about 6 KB, the largest
+announced. The schemas of all 15 tools total about 8 KB, the largest
 `create_transfer` at 2 KB.
 
 Claude Code's [tool search](https://code.claude.com/docs/en/mcp#scale-with-mcp-tool-search)
@@ -278,8 +281,8 @@ is on by default: it sends only the tool names and the server instructions,
 and loads a tool's full definition when the model reaches for it.
 
 To spend less, turn the server off when you are not using it, which in Claude
-Code is the `/mcp` panel. `WISE_READ_ONLY=1` takes the 4 write tools off the
-list, leaving 7. Or install the CLI and add the server on the days it earns
+Code is the `/mcp` panel. `WISE_READ_ONLY=1` takes the 6 write tools off the
+list, leaving 9. Or install the CLI and add the server on the days it earns
 its place.
 
 ## 6. Tools
@@ -295,10 +298,12 @@ see [section 9](#9-several-profiles).
 | `list_profiles` | none | Every profile this token can act for: id, type, name |
 | `list_balances` | `profile`, `include_jars` | Each currency balance: available and reserved |
 | `list_recipients` | `profile`, `currency` (comma-separated), `size` (1-20), `cursor` | Saved recipients, newest first: id, name, currency, type, masked account |
+| `find_recipient` | `name`, `currency`, `account_ending`, `profile` | Every saved recipient that matches, read across all pages: name words in any order, accents and case ignored. Best match first |
+| `check_bank_details` | `recipient_id`, `name`, `details` | Field by field, which of an invoice's name and bank details match the saved recipient and which differ, account numbers masked to their last four |
 | `get_recipient` | `id` | One recipient with its full details as Wise holds them |
-| `list_transfers` | `profile`, `status`, `since`, `until` (YYYY-MM-DD), `limit` (1-100), `offset` | Transfers, newest first: status, amounts, rate, reference |
+| `list_transfers` | `profile`, `status`, `since`, `until` (YYYY-MM-DD), `limit` (1-100), `offset`, `oldest_first` | Transfers, newest first, from the last 90 days unless `since` says otherwise: status, amounts, rate, reference |
 | `get_transfer` | `id` | One transfer |
-| `get_recipient_requirements` | `quote_id` | The bank fields Wise needs for a new recipient on that route, by account type |
+| `get_recipient_requirements` | `currency`, `source_currency`, or `quote_id`, `profile` | The bank fields Wise needs for a new recipient paid in that currency, by account type. With a currency it makes a throwaway quote to ask, which sends nothing |
 
 ### Pricing
 
@@ -314,12 +319,20 @@ on an invoice. `source` means the amount is what leaves your account.
 | Tool | Arguments | What it does |
 |---|---|---|
 | `create_recipient` | `currency`, `type`, `account_holder_name`, `details`, `legal_type`, `owned_by_you`, `profile` | Saves new bank details as a recipient. `details` holds the fields from `get_recipient_requirements`, such as `{"iban":"DE89..."}` |
+| `update_recipient` | `id`, `account_holder_name`, `type`, `details` | Changes a recipient's name or bank details. Pass only what changes; the rest is kept |
+| `delete_recipient` | `id` | Deactivates a recipient, so no new payment can be set up to it |
 | `create_transfer` | `recipient_id`, `source_currency`, `amount`, `target_currency`, `amount_is`, `pay_in`, `reference`, `payment_id`, `profile` | Prices the payment against the recipient and sets it up, unpaid. `target_currency` defaults to the recipient's |
 | `cancel_transfer` | `id` | Cancels a payment that has not been paid yet |
 
 `payment_id` is any stable id for the request: an email's message id, an
 invoice number. The same id always becomes the same Wise transaction id, so
 asking twice, or a retry after a timeout, never sets the payment up twice.
+
+**Changing a recipient.** Wise has no edit for recipients, in its API or its
+app. `update_recipient` saves a new recipient with your changes merged into the
+current details, and only once Wise has accepted it deactivates the old one, so
+a refused change never leaves you without the recipient. Payments already set
+up to the old one still go to the old details: cancel and set them up again.
 
 `reference` is what the recipient sees on their statement. Wise allows fewer
 characters on some routes and says so when it is too long.
@@ -332,9 +345,11 @@ person in the Wise app or website. For most accounts Wise would refuse anyway,
 because a personal token can only fund transfers for business accounts based
 in the US, Canada, Australia, New Zealand, Singapore and Malaysia.
 
-What it can do still matters, so three tools need approval:
+What it can do still matters, so five tools need approval:
 
 - `create_recipient`: bank details saved here are one tap from being paid
+- `update_recipient`: new bank details replace the saved ones
+- `delete_recipient`: a removed recipient has to be saved again from scratch
 - `create_transfer`: a payment set up and waiting
 - `cancel_transfer`: a cancelled transfer cannot be restarted, only set up again
 
@@ -349,7 +364,7 @@ side, which nobody else sees and which expires by itself.
 WISE_READ_ONLY=1
 ```
 
-Every write disappears from the tool list, leaving the 7 reads. A model cannot
+Every write disappears from the tool list, leaving the 9 reads. A model cannot
 call a tool it cannot see. This is the setting for an agent that should only
 report.
 
@@ -365,9 +380,9 @@ Every tool carries MCP annotations, so a client can decide what to auto-approve:
 
 | Tools | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
 |---|---|---|---|
-| The 7 reads | true | false | true |
+| The 9 reads | true | false | true |
 | `create_quote` | false | false | false |
-| `create_recipient`, `create_transfer`, `cancel_transfer` | false | true | false |
+| `create_recipient`, `update_recipient`, `delete_recipient`, `create_transfer`, `cancel_transfer` | false | true | false |
 
 `openWorldHint` is true on everything, because every call leaves your machine.
 
@@ -404,11 +419,14 @@ agent:
 
 1. Search the inbox for payment requests, for example `to:invoices@yourcompany.com newer_than:7d`.
 2. For each one, read the payee, amount, currency, reference and due date.
-3. `list_recipients --currency EUR` and match the payee by name. **No saved
-   recipient, or bank details that differ: skip it and report it.**
-4. `create_transfer` with the email's message id as `payment_id`, the invoice
+3. `find_recipient --name "<payee>" --currency EUR` to match the payee. **No
+   saved recipient: skip it and report it.**
+4. If the request gives bank details, `check_bank_details` against that
+   recipient. **Any field that differs: skip it and report it.** Never update
+   the recipient from the request.
+5. `create_transfer` with the email's message id as `payment_id`, the invoice
    number as `reference`, and you approve each one.
-5. Open Wise. Every payment is waiting under the transfers to pay.
+6. Open Wise. Every payment is waiting under the transfers to pay.
 
 Because `payment_id` is the message id, running the same search tomorrow
 finds the same emails and sets nothing up twice.
@@ -440,7 +458,7 @@ src/
     client.ts       one request path to Wise, profile resolution
     errors.ts       Wise's three error shapes, mapped to exit codes
   tools/
-    index.ts        the 11 tools
+    index.ts        the 15 tools
 ```
 
 Two dependencies: [Slipway](https://github.com/thenavidm/slipway), which serves
@@ -459,8 +477,14 @@ reference yet and keeps its long-standing `/v1/transfers` path:
 | `get_transfer`, `cancel_transfer` | `GET /2026Q4/transfers/{id}`, `PUT /2026Q4/transfers/{id}/cancel` |
 | `create_quote` | `POST /2026Q4/profiles/{id}/quotes` |
 | `get_recipient_requirements` | `GET /2026Q4/quotes/{id}/account-requirements` |
+| `find_recipient` | `GET /2026Q4/accounts`, every page |
+| `check_bank_details` | `GET /v1/accounts/{id}`, for the raw details |
 | `create_recipient` | `POST /2026Q4/accounts` |
+| `update_recipient` | `GET /v1/accounts/{id}`, then `POST /2026Q4/accounts`, then `DELETE /2026Q4/accounts/{id}` |
+| `delete_recipient` | `DELETE /2026Q4/accounts/{id}` |
 | `create_transfer` | `GET /2026Q4/accounts/{id}`, then `POST /2026Q4/profiles/{id}/quotes`, then `POST /2026Q4/transfers` |
+
+**Newest first.** Wise's `/v1/transfers` answers oldest first and has no documented sort, so `list_transfers` reads the whole window (90 days unless `since` says otherwise, up to 1,000 transfers) and sorts it newest first by Wise's own id before applying `limit` and `offset`.
 
 **One payment, one transfer.** Wise refuses a `customerTransactionId` that is
 not a UUID, so `payment_id` becomes a UUID derived from it by SHA-256. The same
@@ -495,7 +519,7 @@ Read this before you install.
 - **Wise changes its API by quarter.** This targets `2026Q4`. `WISE_API_VERSION` moves it when a later version is needed.
 
 If any of that is more than you want to hand an agent, a Read only token, or
-`WISE_READ_ONLY=1`, gives you 7 tools that cannot change anything.
+`WISE_READ_ONLY=1`, gives you 9 tools that cannot change anything.
 
 ## 13. Troubleshooting
 
