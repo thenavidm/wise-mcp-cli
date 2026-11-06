@@ -41,13 +41,13 @@ all run `npx`, so **you do not have to install anything first**.
 ### Claude Code
 
 ```bash
-claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 Without the Keychain:
 
 ```bash
-claude mcp add wise -e WISE_API_TOKEN=your-token -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -e WISE_API_TOKEN=your-token -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 ### Claude Desktop
@@ -83,7 +83,7 @@ If the file is empty or does not exist, paste this in:
   "mcpServers": {
     "wise": {
       "command": "npx",
-      "args": ["-y", "@thenavidm/wise-mcp-cli"],
+      "args": ["-y", "@thenavidm/wise-mcp-cli@latest"],
       "env": {
         "WISE_API_TOKEN": "your-token"
       }
@@ -156,7 +156,7 @@ Binds `127.0.0.1` by default. The token can save recipients and set up payments 
 ### Did it work
 
 ```bash
-npx -y @thenavidm/wise-mcp-cli doctor --network
+npx -y @thenavidm/wise-mcp-cli@latest doctor --network
 ```
 
 It says where the token came from, then lists the profiles it can see, and names the fix when either fails. It only reads.
@@ -190,7 +190,7 @@ do. `@latest` means you get new versions with no action on your part:
 
 ```bash
 npx -y @thenavidm/wise-mcp-cli@latest --version
-bunx @thenavidm/wise-mcp-cli --version
+bunx @thenavidm/wise-mcp-cli@latest --version
 ```
 
 | Command | What it is |
@@ -235,8 +235,21 @@ yarn global upgrade @thenavidm/wise-mcp-cli     # yarn
 bun add -g @thenavidm/wise-mcp-cli@latest       # bun
 ```
 
-If your client config uses `npx -y ...@latest`, there is nothing to upgrade.
-It fetches the current version the next time the server starts.
+Every AI app config on this page runs `npx -y @thenavidm/wise-mcp-cli@latest`,
+so there is nothing to upgrade: npx checks npm each time the server starts and
+fetches a new version when there is one. Restart the app to pick it up.
+
+Without `@latest`, npx keeps reusing the copy it fetched the first time, so a
+config written as `npx -y @thenavidm/wise-mcp-cli` stays on that version. Add
+`@latest` to it.
+
+The CLI installed with `npm install -g` stays on its version until you run the
+upgrade below. To skip that, run it through npx instead:
+`npx -y @thenavidm/wise-mcp-cli@latest list-balances`.
+
+The Claude Desktop extension is a fixed version: download the new `.mcpb` from
+[the latest release](https://github.com/thenavidm/wise-mcp-cli/releases/latest)
+and open it to update.
 
 Restart your AI tool afterwards so it reconnects to the new server:
 

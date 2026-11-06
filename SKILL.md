@@ -162,7 +162,7 @@ bank details from them on their own.
 ## Installing the MCP server instead
 
 ```bash
-claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 With the token in the macOS Keychain item `wise-api-token`, nothing else is

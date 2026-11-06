@@ -52,7 +52,7 @@ You never run it by hand. With the token in the macOS Keychain
 ([section 2](#2-set-up-your-account)) there is nothing to pass:
 
 ```bash
-claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 Then just ask: _"set up the payment in Anna's invoice email, ready for me to pay"_
@@ -191,13 +191,13 @@ Node 22 or newer, and a token from [section 2](#2-set-up-your-account).
 **Claude Code**
 
 ```bash
-claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 With the token in the Keychain that is all. Without it:
 
 ```bash
-claude mcp add wise -e WISE_API_TOKEN=your-token -- npx -y @thenavidm/wise-mcp-cli
+claude mcp add wise -e WISE_API_TOKEN=your-token -- npx -y @thenavidm/wise-mcp-cli@latest
 ```
 
 **Claude Desktop** Download the [`.mcpb` extension](https://github.com/thenavidm/wise-mcp-cli/releases/latest)
